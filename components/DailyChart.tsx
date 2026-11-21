@@ -1,4 +1,3 @@
-"use client";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Area, Bar, CartesianGrid, ComposedChart, LabelList, Line, Tooltip, XAxis, YAxis } from "recharts";
 import { compact, thDay } from "@/lib/format";
@@ -20,12 +19,15 @@ const PX_PER_DAY = 48;
 const AXIS_W = 48;
 const X_AXIS_H = 34;
 
-function Tip({ active, payload, label, series }: any) {
+function Tip({ active, payload, label, series, compare }: any) {
   if (!active || !payload?.length) return null;
+  const cur = payload.find((p: any) => p.dataKey === "cur")?.value;
+  const prev = payload.find((p: any) => p.dataKey === "prev")?.value;
+  const change = compare && typeof cur === "number" && typeof prev === "number" && prev > 0 ? ((cur - prev) / prev) * 100 : null;
   return (
-    <div className="rounded-xl border border-line bg-surface px-3 py-2 text-xs shadow-[var(--shadow-pop)]">
-      <div className="mb-1 text-muted">{thDay(String(label))}</div>
-      {payload.map((p: any) => {
+    <div className="min-w-[180px] rounded-xl border border-line bg-surface px-3 py-2.5 text-xs shadow-[var(--shadow-pop)]">
+      <div className="mb-1.5 font-medium text-text">{thDay(String(label))}</div>
+      {[...payload].sort((x: any, y: any) => (x.dataKey === "prev" ? 1 : 0) - (y.dataKey === "prev" ? 1 : 0)).map((p: any) => {
         const s: Series | undefined = series.find((x: Series) => x.key === p.dataKey);
         if (!s || p.value == null) return null;
         return (
@@ -36,6 +38,11 @@ function Tip({ active, payload, label, series }: any) {
           </div>
         );
       })}
+      {change != null && (
+        <div className={`num mt-1.5 border-t border-line pt-1.5 font-medium ${change >= 0 ? "text-up" : "text-down"}`}>
+          {change >= 0 ? "↑" : "↓"} {Math.abs(change).toFixed(1)}% เทียบช่วงก่อน
+        </div>
+      )}
     </div>
   );
 }
@@ -62,7 +69,7 @@ function DateTick({ x, y, payload, index, visibleTicksCount }: any) {
   );
 }
 
-export function DailyChart({ data, series, height = 280 }: { data: Record<string, any>[]; series: Series[]; height?: number }) {
+export function DailyChart({ data, series, height = 280, compare }: { data: Record<string, any>[]; series: Series[]; height?: number; compare?: boolean }) {
   const uid = useId().replace(/:/g, "");
   const hasRight = series.some((s) => s.axis === "right");
   const hasLabels = series.some((s) => s.labels);
@@ -144,16 +151,17 @@ export function DailyChart({ data, series, height = 280 }: { data: Record<string
             <XAxis dataKey="day" interval={0} tick={<DateTick />} tickLine={false} axisLine={false} height={X_AXIS_H} />
             <YAxis yAxisId="left" hide domain={[0, left.top]} ticks={left.ticks} />
             {right && <YAxis yAxisId="right" orientation="right" hide domain={[0, right.top]} ticks={right.ticks} />}
-            <Tooltip content={<Tip series={series} />} cursor={{ stroke: "var(--color-line-strong)", strokeWidth: 1, fill: "var(--color-hover)" }} />
+            <Tooltip content={<Tip series={series} compare={compare} />} allowEscapeViewBox={{ x: false, y: true }}
+              cursor={{ stroke: "var(--color-faint)", strokeWidth: 1, strokeDasharray: "3 3", fill: "var(--color-hover)" }} />
             {series.map((s) => {
-              const common = { key: s.key, dataKey: s.key, name: s.label, yAxisId: s.axis ?? "left", isAnimationActive: false };
-              if (s.kind === "bar") return <Bar {...common} fill={`url(#${uid}-${s.key})`} radius={[5, 5, 0, 0]} maxBarSize={26}>{valueLabel(s)}</Bar>;
+              const common = { dataKey: s.key, name: s.label, yAxisId: s.axis ?? "left", isAnimationActive: s.kind !== "ghost" && !scrolls, animationDuration: 450, animationEasing: "ease-out" as const };
+              if (s.kind === "bar") return <Bar key={s.key} {...common} fill={`url(#${uid}-${s.key})`} radius={[5, 5, 0, 0]} maxBarSize={26}>{valueLabel(s)}</Bar>;
               if (s.kind === "area")
-                return <Area {...common} type="monotone" stroke={s.color} strokeWidth={2} fill={`url(#${uid}-${s.key})`} dot={{ r: 2.5, fill: s.color, strokeWidth: 0 }}
+                return <Area key={s.key} {...common} type="monotone" stroke={s.color} strokeWidth={2} fill={`url(#${uid}-${s.key})`} dot={{ r: 2.5, fill: s.color, strokeWidth: 0 }}
                   activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--color-surface)", fill: s.color }} connectNulls>{valueLabel(s)}</Area>;
               if (s.kind === "ghost")
-                return <Line {...common} type="monotone" stroke="var(--color-faint)" strokeOpacity={0.7} strokeWidth={1.5} strokeDasharray="4 4" dot={false} activeDot={false} connectNulls />;
-              return <Line {...common} type="monotone" stroke={s.color} strokeWidth={2} dot={{ r: 2.5, fill: s.color, strokeWidth: 0 }}
+                return <Line key={s.key} {...common} type="monotone" stroke="var(--color-faint)" strokeOpacity={0.7} strokeWidth={1.5} strokeDasharray="4 4" dot={false} activeDot={false} connectNulls />;
+              return <Line key={s.key} {...common} type="monotone" stroke={s.color} strokeWidth={2} dot={{ r: 2.5, fill: s.color, strokeWidth: 0 }}
                 activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--color-surface)", fill: s.color }} connectNulls>{valueLabel(s)}</Line>;
             })}
           </ComposedChart>

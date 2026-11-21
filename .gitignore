@@ -1,4 +1,9 @@
 .env
 service-account.json
 node_modules/
+dist/
+.firebase/
+*.tsbuildinfo
+firebase-debug.log
+*-debug.log
 .next/

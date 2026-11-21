@@ -1,11 +1,8 @@
-"use client";
 import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const KEY = "theme";
 
-/** Inline script (runs before paint) so the saved theme applies without a flash. */
-export const themeScript = `try{var t=localStorage.getItem("${KEY}");if(t==="dark")document.documentElement.dataset.theme="dark"}catch(e){}`;
 
 export function ThemeToggle() {
   const [dark, setDark] = useState(false);

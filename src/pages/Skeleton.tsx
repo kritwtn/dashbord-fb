@@ -1,4 +1,4 @@
-export default function Loading() {
+export function PageSkeleton() {
   return (
     <div className="mx-auto max-w-[1280px] space-y-5 px-4 py-6 sm:px-6" aria-busy="true" aria-label="กำลังโหลด">
       <div className="flex flex-wrap items-end justify-between gap-4">

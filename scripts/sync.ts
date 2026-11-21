@@ -4,7 +4,10 @@
  *                              npm run sync -- --full      (backfill since first post)
  *                              npm run sync -- --refresh   (only refresh page list/tokens)
  */
+import { useAdminDb } from "../lib/firebase";
 import { refreshPages } from "../lib/fb";
+
+useAdminDb();
 import { syncPages } from "../lib/sync";
 
 async function main() {

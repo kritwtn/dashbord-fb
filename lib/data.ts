@@ -1,4 +1,4 @@
-import { db } from "./firebase";
+import { db } from "./store";
 import type { Metrics, PageDay, PageInfo, PostDay, PostInfo, SyncRun } from "./types";
 
 export async function listPages(): Promise<PageInfo[]> {
@@ -48,21 +48,26 @@ export async function loadPage(pageId: string): Promise<PageBundle | null> {
 
 export async function loadPost(pageId: string, postKey: string) {
   const r = (p: string) => db().ref(p);
-  const [page, post, latest, daily, syncs] = await Promise.all([
+  const [page, all, latest, daily, syncs] = await Promise.all([
     r(`pages/${pageId}`).get(),
-    r(`posts/${pageId}/${postKey}`).get(),
+    r(`posts/${pageId}`).get(),
     r(`latest/${pageId}/${postKey}`).get(),
     r(`postDaily/${pageId}/${postKey}`).get(),
     r(`syncs/${pageId}`).orderByKey().limitToLast(60).get(),
   ]);
-  if (!post.exists()) return null;
+  const posts: Record<string, PostInfo> = all.val() ?? {};
+  const post = posts[postKey];
+  if (!post) throw new Error("ไม่พบโพสต์นี้");
+  // masked number for secret mode: #1 = oldest, same as the lists
+  const postNo = Object.entries(posts).sort((x, y) => x[1].createdTime.localeCompare(y[1].createdTime)).findIndex(([k]) => k === postKey) + 1;
   const runs = Object.values<SyncRun>(syncs.val() ?? {}).sort((a, b) => a.at - b.at);
   const snaps = await Promise.all(
     runs.map(async (s) => ({ sync: s, m: (await r(`snapshots/${pageId}/${s.id}/${postKey}`).get()).val() as Metrics | null })),
   );
   return {
     page: page.val() as PageInfo,
-    post: post.val() as PostInfo,
+    post,
+    postNo,
     latest: latest.val() as Latest | null,
     daily: (daily.val() ?? {}) as Record<string, PostDay>,
     snapshots: snaps.filter((s) => s.m) as { sync: SyncRun; m: Metrics }[],

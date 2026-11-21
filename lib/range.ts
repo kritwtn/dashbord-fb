@@ -1,5 +1,4 @@
-"use client";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "./nav";
 import { progress } from "@/components/TopProgress";
 import { useCallback } from "react";
 import { addDays } from "./format";
@@ -37,6 +36,7 @@ export function computeWindow(key: RangeKey, firstDay: string, lastDay: string, 
 export function useRangeParam(lastDay: string) {
   const sp = useSearchParams();
   const pathname = usePathname();
+  const router = useRouter();
   const key = (RANGES.find((r) => r.key === sp.get("r"))?.key ?? "month") as RangeKey;
   const pickDay = sp.get("d") ?? addDays(lastDay, -1);
   const set = useCallback(
@@ -46,12 +46,11 @@ export function useRangeParam(lastDay: string) {
       if (patch.d) next.set("d", patch.d);
       if (patch.r && patch.r !== "day") next.delete("d");
       const qs = next.toString();
-      // Shallow URL update: everything is computed client-side from data already loaded,
-      // so skip the server round-trip (Next.js syncs useSearchParams with history.replaceState).
-      window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname);
+      // client-side only: everything is computed from data already loaded
+      router.replace(qs ? `${pathname}?${qs}` : pathname);
       progress.pulse();
     },
-    [sp, pathname],
+    [sp, pathname, router],
   );
   return { key, pickDay, set, query: sp.toString() };
 }

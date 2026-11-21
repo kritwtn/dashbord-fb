@@ -1,7 +1,6 @@
-"use client";
 import { ChevronLeft, ChevronRight, Columns3, Search, X } from "lucide-react";
-import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import Link from "@/lib/nav";
+import { usePathname, useRouter, useSearchParams } from "@/lib/nav";
 import { useEffect, useMemo, useState } from "react";
 import { buildRows, dayBounds, postNumbers, type PostRow } from "@/lib/analytics";
 import type { PageBundle } from "@/lib/data";
@@ -89,7 +88,7 @@ export function PostsView({ b }: { b: PageBundle }) {
     setQ("");
     const n = new URLSearchParams(sp.toString());
     n.delete("q");
-    window.history.replaceState(null, "", n.toString() ? `${pathname}?${n}` : pathname);
+    router.replace(n.toString() ? `${pathname}?${n}` : pathname);
   };
 
   const cell = (r: PostRow, k: SortKey) => {
@@ -117,7 +116,7 @@ export function PostsView({ b }: { b: PageBundle }) {
   );
 
   return (
-    <div className="mx-auto max-w-[1280px] space-y-5 px-4 pb-12 pt-6 sm:px-6">
+    <div className="fade-in mx-auto max-w-[1280px] space-y-5 px-4 pb-12 pt-6 sm:px-6">
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">โพสต์ทั้งหมด</h1>

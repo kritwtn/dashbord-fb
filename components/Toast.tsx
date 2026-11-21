@@ -1,4 +1,3 @@
-"use client";
 import { CheckCircle2, Info, X } from "lucide-react";
 import { createContext, useCallback, useContext, useState } from "react";
 

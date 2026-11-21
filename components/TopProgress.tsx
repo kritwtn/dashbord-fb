@@ -1,5 +1,4 @@
-"use client";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "@/lib/nav";
 import { useEffect, useRef, useState } from "react";
 
 /**

@@ -1,9 +1,8 @@
-"use client";
 import {
-  Bell, ChevronDown, Eye, EyeOff, History, LayoutDashboard, ListVideo, LogOut, Menu, RefreshCw, Search, X,
+  Bell, ChevronDown, Eye, EyeOff, History, LayoutDashboard, ListVideo, LogOut, Menu, PanelLeftClose, PanelLeftOpen, RefreshCw, Search, X,
 } from "lucide-react";
-import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import Link from "@/lib/nav";
+import { usePathname, useRouter, useSearchParams } from "@/lib/nav";
 import { useEffect, useRef, useState } from "react";
 import { compact, thDate } from "@/lib/format";
 import type { PageInfo, SyncRun } from "@/lib/types";
@@ -11,6 +10,8 @@ import { maskPage, useSecret } from "./Secret";
 import { ThemeToggle } from "./Theme";
 import { useToast } from "./Toast";
 import { progress } from "./TopProgress";
+import { logout } from "@/lib/auth";
+import { syncPage } from "@/lib/sync";
 
 type Props = {
   pages: PageInfo[];
@@ -47,6 +48,13 @@ export function AppShell({ pages, pageId, email, syncs, children }: Props) {
   const [bell, setBell] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
   const [q, setQ] = useState(sp.get("q") ?? "");
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem("sidebar-collapsed") === "1"; } catch { return false; }
+  });
+  const toggleCollapsed = () => setCollapsed((v) => {
+    try { localStorage.setItem("sidebar-collapsed", v ? "0" : "1"); } catch {}
+    return !v;
+  });
   const bellRef = useClickAway<HTMLDivElement>(bell, () => setBell(false));
   const userRef = useClickAway<HTMLDivElement>(userMenu, () => setUserMenu(false));
 
@@ -73,13 +81,10 @@ export function AppShell({ pages, pageId, email, syncs, children }: Props) {
     setUserMenu(false);
     progress.start();
     try {
-      const res = await fetch("/api/sync", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pageIds: [pageId], full }) });
-      const j = await res.json();
-      const r = j.results?.[0];
-      if (r?.run)
-        toast({ kind: "success", title: full ? "ดึงข้อมูลย้อนหลังเรียบร้อย" : "Sync เรียบร้อย",
-          detail: `อัปเดต ${r.run.refreshed ?? r.run.postCount} จาก ${r.run.postCount} โพสต์ · ข้อมูลรายวัน ${r.run.dailyDays ?? "-"} วันล่าสุด` });
-      else toast({ kind: "error", title: "Sync ไม่สำเร็จ", detail: r?.error ?? j.error });
+      // runs in the browser: Graph API allows CORS, the page token comes from the (admin-only) database
+      const run = await syncPage(pageId, { source: "api", full });
+      toast({ kind: "success", title: full ? "ดึงข้อมูลย้อนหลังเรียบร้อย" : "Sync เรียบร้อย",
+        detail: `อัปเดต ${run.refreshed ?? run.postCount} จาก ${run.postCount} โพสต์ · ข้อมูลรายวัน ${run.dailyDays ?? "-"} วันล่าสุด` });
       router.refresh();
     } catch (e: any) {
       toast({ kind: "error", title: "Sync ไม่สำเร็จ", detail: e.message });
@@ -89,43 +94,52 @@ export function AppShell({ pages, pageId, email, syncs, children }: Props) {
     }
   }
 
-  async function logout() {
-    await fetch("/api/session", { method: "DELETE" });
+  async function doLogout() {
+    await logout();
     router.push("/login");
   }
 
-  const sidebar = (
+  const renderSidebar = (mini: boolean) => (
     <div className="flex h-full flex-col">
-      <div className="flex h-14 items-center gap-2.5 px-4">
-        <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-primary text-primary-ink">
+      <div className={`flex h-14 items-center gap-2.5 ${mini ? "justify-center px-2" : "px-4"}`}>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-primary text-primary-ink">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5Z" /></svg>
         </span>
-        <span className="font-semibold tracking-tight">Reels Insight</span>
-        <button className="btn btn-ghost btn-icon ml-auto lg:hidden" onClick={() => setDrawer(false)} aria-label="ปิดเมนู"><X size={18} /></button>
+        {!mini && <span className="font-semibold tracking-tight">Reels Insight</span>}
+        {!mini && <button className="btn btn-ghost btn-icon ml-auto lg:hidden" onClick={() => setDrawer(false)} aria-label="ปิดเมนู"><X size={18} /></button>}
       </div>
 
-      <nav className="space-y-0.5 px-3 pt-2">
+      <div className={`pb-1.5 pt-3 text-[11px] font-semibold uppercase tracking-wider text-faint ${mini ? "text-center" : "px-5"}`}>{mini ? "•" : "เมนู"}</div>
+      <nav className={`space-y-0.5 ${mini ? "px-2" : "px-3"}`} aria-label="เมนูหลัก">
         {nav.map((n) => (
-          <Link key={n.href} href={`${n.href}${qs}`}
-            className={`flex h-9 items-center gap-2.5 rounded-[10px] px-2.5 text-sm font-medium transition-colors ${
+          <Link key={n.href} href={`${n.href}${qs}`} title={mini ? n.label : undefined} aria-current={n.active ? "page" : undefined}
+            className={`relative flex h-9 items-center gap-2.5 rounded-[10px] text-sm font-medium transition-colors ${mini ? "justify-center" : "px-2.5"} ${
               n.active ? "bg-primary-soft text-text" : "text-muted hover:bg-hover hover:text-text"}`}>
+            {n.active && <span className="absolute -left-3 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-primary" aria-hidden />}
             <n.icon size={17} className={n.active ? "text-primary-text" : ""} />
-            {n.label}
+            {!mini && n.label}
           </Link>
         ))}
       </nav>
 
-      <div className="mt-6 px-5 pb-2 text-[11px] font-semibold uppercase tracking-wider text-faint">เพจ ({pages.length})</div>
-      <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3 pb-3">
+      <div className={`mt-5 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-faint ${mini ? "text-center" : "px-5"}`}>{mini ? "เพจ" : `เพจ (${pages.length})`}</div>
+      <div className={`min-h-0 flex-1 space-y-0.5 overflow-y-auto pb-3 ${mini ? "px-2" : "px-3"}`}>
         {pages.map((p, i) => {
           const active = p.id === pageId;
           const sub = pathname.replace(`/p/${pageId}`, "").startsWith("/posts") ? "/posts" : "";
-          return (
-            <Link key={p.id} href={`/p/${p.id}${sub}${qs}`}
-              className={`flex items-center gap-2.5 rounded-[10px] px-2 py-1.5 transition-colors ${active ? "bg-hover" : "hover:bg-hover"}`}>
-              <span className={`h-7 w-[3px] shrink-0 rounded-full ${active ? "bg-primary" : "bg-transparent"}`} />
+          const name = maskPage(secret, p.name, i);
+          return mini ? (
+            <Link key={p.id} href={`/p/${p.id}${sub}${qs}`} title={name} aria-current={active ? "page" : undefined}
+              className={`num flex h-9 items-center justify-center rounded-[10px] text-xs font-semibold transition-colors ${
+                active ? "bg-primary text-primary-ink" : "text-muted hover:bg-hover hover:text-text"}`}>
+              {i + 1}
+            </Link>
+          ) : (
+            <Link key={p.id} href={`/p/${p.id}${sub}${qs}`} aria-current={active ? "page" : undefined}
+              className={`group relative flex items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 transition-colors ${active ? "bg-hover" : "hover:bg-hover"}`}>
+              {active && <span className="absolute -left-3 top-2 bottom-2 w-[3px] rounded-r-full bg-primary" aria-hidden />}
               <div className="min-w-0 flex-1">
-                <div className={`truncate text-[13px] ${active ? "font-semibold text-text" : "text-muted"}`}>{maskPage(secret, p.name, i)}</div>
+                <div className={`truncate text-[13px] ${active ? "font-semibold text-text" : "text-muted group-hover:text-text"}`}>{name}</div>
                 <div className="num text-[11px] text-faint">{p.followers ? `${compact(p.followers)} ผู้ติดตาม` : "—"}</div>
               </div>
             </Link>
@@ -133,23 +147,30 @@ export function AppShell({ pages, pageId, email, syncs, children }: Props) {
         })}
       </div>
 
-      <div className="border-t border-line p-3">
-        <div className="flex items-center gap-2 rounded-[10px] px-2 py-1.5 text-xs text-muted">
-          <span className={`h-2 w-2 rounded-full ${stale ? "bg-primary" : "bg-up"}`} />
-          {last ? <>sync ล่าสุด {thDate(new Date(last.at).toISOString())}</> : "ยังไม่เคย sync"}
+      <div className={`flex items-center gap-2 border-t border-line p-3 ${mini ? "flex-col" : ""}`}>
+        <div className={`flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-xs text-muted ${mini ? "justify-center" : ""}`}
+          title={last ? `sync ล่าสุด ${thDate(new Date(last.at).toISOString())}` : "ยังไม่เคย sync"}>
+          <span className={`h-2 w-2 shrink-0 rounded-full ${stale ? "bg-primary" : "bg-up"}`} />
+          {!mini && <span className="truncate">{last ? <>sync ล่าสุด {thDate(new Date(last.at).toISOString())}</> : "ยังไม่เคย sync"}</span>}
         </div>
+        <button className="btn btn-ghost btn-icon hidden h-8 w-8 shrink-0 lg:inline-flex" onClick={toggleCollapsed}
+          aria-label={mini ? "ขยายแถบด้านข้าง" : "ย่อแถบด้านข้าง"} title={mini ? "ขยายแถบด้านข้าง" : "ย่อแถบด้านข้าง"}>
+          {mini ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+        </button>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen lg:pl-[260px]">
+    <div className={`min-h-screen transition-[padding] duration-200 ${collapsed ? "lg:pl-[72px]" : "lg:pl-[260px]"}`}>
       {/* Sidebar: fixed on desktop, drawer on mobile */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[260px] border-r border-line bg-surface lg:block">{sidebar}</aside>
+      <aside className={`fixed inset-y-0 left-0 z-40 hidden border-r border-line bg-surface transition-[width] duration-200 lg:block ${collapsed ? "w-[72px]" : "w-[260px]"}`}>
+        {renderSidebar(collapsed)}
+      </aside>
       {drawer && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setDrawer(false)} />
-          <aside className="absolute inset-y-0 left-0 w-[280px] max-w-[85vw] bg-surface shadow-[var(--shadow-pop)]">{sidebar}</aside>
+          <aside className="slide-in absolute inset-y-0 left-0 w-[280px] max-w-[85vw] bg-surface shadow-[var(--shadow-pop)]">{renderSidebar(false)}</aside>
         </div>
       )}
 
@@ -224,7 +245,7 @@ export function AppShell({ pages, pageId, email, syncs, children }: Props) {
                     </div>
                   </button>
                   <div className="my-1 h-px bg-line" />
-                  <button className="menu-item" onClick={logout}><LogOut size={16} className="text-muted" />ออกจากระบบ</button>
+                  <button className="menu-item" onClick={doLogout}><LogOut size={16} className="text-muted" />ออกจากระบบ</button>
                 </div>
               )}
             </div>

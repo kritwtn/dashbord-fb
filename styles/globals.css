@@ -16,7 +16,7 @@
   /* text */
   --color-text: #17171a;
   --color-muted: #5f5f68;
-  --color-faint: #8b8b94;
+  --color-faint: #74747d; /* ≥4.5:1 on white */
   /* brand */
   --color-primary: #f2c230;
   --color-primary-hover: #e8b519;
@@ -40,8 +40,9 @@
   --shadow-card: 0 1px 2px rgba(23, 23, 26, 0.04), 0 1px 1px rgba(23, 23, 26, 0.02);
   --shadow-pop: 0 12px 32px -8px rgba(23, 23, 26, 0.18), 0 2px 6px rgba(23, 23, 26, 0.06);
 
-  --font-sans: var(--font-plex), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-num: var(--font-inter), var(--font-plex), ui-sans-serif, system-ui, sans-serif;
+  /* Geist for Latin & digits, Anuphan for Thai (browser falls through per glyph) */
+  --font-sans: "Geist", "Anuphan", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-num: "Geist", "Anuphan", ui-sans-serif, system-ui, sans-serif;
 }
 
 :root[data-theme="dark"] {
@@ -53,7 +54,7 @@
   --color-line-strong: #31343c;
   --color-text: #ececee;
   --color-muted: #a0a0aa;
-  --color-faint: #7a7a85;
+  --color-faint: #8d8d98;
   --color-primary: #f2c230;
   --color-primary-hover: #f6cf55;
   --color-primary-ink: #1d1604;
@@ -121,7 +122,7 @@ body {
     @apply text-[15px] font-semibold text-text;
   }
   .btn {
-    @apply inline-flex h-9 items-center justify-center gap-2 rounded-[10px] border border-line bg-surface px-3 text-sm font-medium text-text transition-colors duration-150 hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-[10px] border border-line bg-surface px-3 text-sm font-medium text-text transition duration-150 hover:bg-hover active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100;
   }
   .btn-icon {
     @apply w-9 px-0;
@@ -179,4 +180,27 @@ body {
   input:disabled {
     cursor: not-allowed;
   }
+}
+
+/* Micro-interactions & accessibility */
+@layer base {
+  :focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-primary) 80%, var(--color-text));
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes slide-in {
+  from { transform: translateX(-100%); }
+  to { transform: none; }
+}
+.fade-in { animation: fade-in 260ms ease-out both; }
+.slide-in { animation: slide-in 200ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .fade-in, .slide-in { animation: none; }
+  * { transition-duration: 0ms !important; }
 }

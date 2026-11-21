@@ -1,4 +1,4 @@
-import { db, safeKey } from "./firebase";
+import { db, safeKey } from "./store";
 import { fetchPageDaily, fetchPostDaily, fetchPostMetrics, fetchPosts, fetchStories, pageToken, refreshPages } from "./fb";
 import type { Metrics, PostInfo, SyncRun } from "./types";
 

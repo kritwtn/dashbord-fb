@@ -1,6 +1,5 @@
-"use client";
 import { ArrowLeft, CircleDollarSign, ExternalLink, Eye, UserPlus } from "lucide-react";
-import Link from "next/link";
+import Link from "@/lib/nav";
 import { daysBetween, num, thDate, thDay, usd } from "@/lib/format";
 import type { Metrics, PostDay, PostInfo, SyncRun } from "@/lib/types";
 import { DailyChart, Legend } from "./DailyChart";
@@ -48,7 +47,7 @@ export function PostDetail(props: {
   const enoughForChart = data.length > 3;
 
   return (
-    <div className="mx-auto max-w-[1100px] space-y-5 px-4 pb-12 pt-6 sm:px-6">
+    <div className="fade-in mx-auto max-w-[1100px] space-y-5 px-4 pb-12 pt-6 sm:px-6">
       <Link href={`/p/${props.pageId}/posts`} className="inline-flex items-center gap-1.5 rounded-lg px-1 text-sm text-muted transition-colors hover:text-text">
         <ArrowLeft size={15} /> โพสต์ทั้งหมด · {maskPage(secret, props.pageName, props.pageIndex)}
       </Link>
@@ -63,6 +62,7 @@ export function PostDetail(props: {
             <span>{thDate(post.createdTime)}</span>
             {post.length ? <span className="num">· {post.length} วินาที</span> : null}
           </div>
+          <h1 className="sr-only">{secret ? `โพสต์ #${props.postNo}` : "รายละเอียดโพสต์"}</h1>
           <p className="whitespace-pre-wrap text-[15px] leading-relaxed">
             {secret ? `โพสต์ #${props.postNo}` : post.message || <span className="text-muted">(ไม่มีข้อความ)</span>}
           </p>

@@ -1,1 +1,5 @@
-{ "projects": { "default": "dashboard-reels-87e0b" } }
+{
+  "projects": {
+    "default": "dashboard-reels-87e0b"
+  }
+}

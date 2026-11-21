@@ -2,28 +2,33 @@
   "name": "dashboard-reels",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
-    "build": "next build",
-    "start": "next start -p 3000",
+    "dev": "vite",
+    "build": "tsc --noEmit -p . && vite build",
+    "preview": "vite preview",
+    "deploy": "npm run build && firebase deploy --only hosting,database",
     "sync": "tsx --env-file=.env scripts/sync.ts"
   },
   "dependencies": {
     "firebase": "^12.3.0",
     "firebase-admin": "^13.5.0",
     "lucide-react": "^0.544.0",
-    "next": "^15.5.29",
     "papaparse": "^5.5.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "react-router-dom": "^6.28.0",
     "recharts": "^3.2.1"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.13",
+    "@tailwindcss/vite": "^4.1.13",
     "@types/node": "^22.18.6",
     "@types/papaparse": "^5.3.16",
     "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^4.7.0",
     "tailwindcss": "^4.1.13",
     "tsx": "^4.20.5",
-    "typescript": "^5.9.2"
-  }
+    "typescript": "^5.9.2",
+    "vite": "^6.3.6"
+  },
+  "type": "module"
 }

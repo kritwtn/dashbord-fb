@@ -1,7 +1,10 @@
-import { db } from "./firebase";
+import { db } from "./store";
+
+// process.env exists only in the CLI; the browser reads tokens from the database.
+const env: Record<string, string | undefined> = typeof process !== "undefined" ? process.env : {};
 import { emptyMetrics, type Metrics, type PageDay, type PostDay, type PostInfo } from "./types";
 
-const V = process.env.FB_GRAPH_VERSION ?? "v23.0";
+const V = env.FB_GRAPH_VERSION ?? "v23.0";
 const BASE = `https://graph.facebook.com/${V}`;
 
 type GraphError = { message: string; code: number; type?: string };
@@ -50,7 +53,7 @@ async function batch(relativeUrls: string[], token: string): Promise<(any | FbEr
 
 /** Fetch all pages the user token administers; persist page tokens server-side (never-expiring). */
 export async function refreshPages(): Promise<{ id: string; name: string; followers?: number }[]> {
-  const userToken = process.env.FB_USER_TOKEN;
+  const userToken = env.FB_USER_TOKEN;
   if (!userToken) throw new Error("FB_USER_TOKEN is not set in .env");
   const pages: { id: string; name: string; access_token: string; followers_count?: number }[] = [];
   let next: string | undefined = `me/accounts?fields=id,name,access_token,followers_count&limit=100`;
@@ -73,7 +76,8 @@ export async function refreshPages(): Promise<{ id: string; name: string; follow
 export async function pageToken(pageId: string): Promise<string> {
   const snap = await db().ref(`_secrets/pageTokens/${pageId}`).get();
   if (snap.exists()) return snap.val();
-  if (pageId === process.env.FB_PAGE_ID && process.env.FB_PAGE_TOKEN) return process.env.FB_PAGE_TOKEN;
+  if (pageId === env.FB_PAGE_ID && env.FB_PAGE_TOKEN) return env.FB_PAGE_TOKEN;
+  if (!env.FB_USER_TOKEN) throw new Error(`ไม่พบ token ของเพจ ${pageId}`);
   await refreshPages();
   const again = await db().ref(`_secrets/pageTokens/${pageId}`).get();
   if (!again.exists()) throw new Error(`No token for page ${pageId}`);

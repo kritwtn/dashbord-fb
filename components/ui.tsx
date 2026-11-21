@@ -1,5 +1,4 @@
-"use client";
-import { ArrowDownRight, ArrowUpRight, Inbox } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, Inbox, Info, RotateCw } from "lucide-react";
 import { RANGES, type RangeKey } from "@/lib/range";
 import { TYPE_LABEL } from "@/lib/format";
 import { DatePicker } from "./DatePicker";
@@ -80,5 +79,33 @@ export function SortHeader({ label, active, dir, onSort, align = "left" }: {
         <span className={active && dir === "desc" ? "text-primary-text" : "text-faint"}>▼</span>
       </span>
     </button>
+  );
+}
+
+/** Small ⓘ with an accessible tooltip (hover or keyboard focus). */
+export function InfoTip({ text, side = "top", align = "end" }: { text: React.ReactNode; side?: "top" | "bottom"; align?: "center" | "end" }) {
+  return (
+    <span className="group/tip relative inline-flex" onClick={(e) => e.stopPropagation()}>
+      <span tabIndex={0} role="img" aria-label="ข้อมูลเพิ่มเติม"
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-faint outline-none transition-colors hover:text-text focus-visible:text-text">
+        <Info size={13} />
+      </span>
+      <span role="tooltip"
+        className={`pointer-events-none absolute z-50 hidden w-max max-w-[min(240px,80vw)] whitespace-normal rounded-lg bg-text px-2.5 py-1.5 text-xs font-normal leading-relaxed text-bg shadow-[var(--shadow-pop)] group-hover/tip:block group-focus-within/tip:block ${
+          align === "end" ? "-right-1" : "left-1/2 -translate-x-1/2"} ${side === "top" ? "bottom-full mb-2" : "top-full mt-2"}`}>
+        {text}
+      </span>
+    </span>
+  );
+}
+
+export function ErrorState({ title = "โหลดข้อมูลไม่สำเร็จ", detail, onRetry }: { title?: string; detail?: string; onRetry?: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
+      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-down-soft text-down"><AlertTriangle size={20} /></span>
+      <div className="mt-3 text-sm font-medium">{title}</div>
+      {detail && <div className="mt-1 max-w-sm break-words text-xs text-muted">{detail}</div>}
+      {onRetry && <button className="btn mt-4 h-8 text-[13px]" onClick={onRetry}><RotateCw size={14} />ลองอีกครั้ง</button>}
+    </div>
   );
 }

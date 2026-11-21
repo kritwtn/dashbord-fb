@@ -1,13 +1,15 @@
-import { ChevronLeft, ChevronRight, CircleDollarSign, Eye, Hash, Heart, PlayCircle, UserPlus, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, CircleDollarSign, Eye, Hash, Heart, Info, PlayCircle, UserPlus, Users } from "lucide-react";
 import Link from "@/lib/nav";
 import { useMemo, useState } from "react";
 import { buildRows, dayBounds, pageSum, postNumbers } from "@/lib/analytics";
-import type { PageBundle } from "@/lib/data";
+import { loadFollowGains, type PageBundle } from "@/lib/data";
+import { useData } from "@/lib/useData";
 import { addDays, compact, daysBetween, metaDay, num, pct, thDay, usd } from "@/lib/format";
 import { computeWindow, useRangeParam } from "@/lib/range";
 import type { PageDay, PostInfo } from "@/lib/types";
 import { DailyChart, Legend } from "./DailyChart";
 import { DatePicker } from "./DatePicker";
+import { Drawer } from "./Drawer";
 import { maskPage, Thumb, useSecret } from "./Secret";
 import { Sparkline } from "./Sparkline";
 import { Dash, EmptyState, Growth, InfoTip, RangePicker, TypeBadge } from "./ui";
@@ -194,25 +196,33 @@ export function Overview({ b, pageIndex }: { b: PageBundle; pageIndex: number })
 
 function DailySummary({ b, firstDay, lastDay, title }: { b: PageBundle; firstDay: string; lastDay: string; title: (k: string, p: PostInfo) => string }) {
   const [day, setDay] = useState(lastDay);
-  const [by, setBy] = useState<"v" | "r">("v");
+  const [by, setBy] = useState<"v" | "r" | "f">("v");
   const prevDay = addDays(day, -1);
+  // followers per post: Meta only gives a lifetime total, so the per-day gain comes from sync snapshots
+  const follow = useData(() => loadFollowGains(b.page.id, day), [b.page.id, day]).data;
+  const fGain = (k: string) => (follow?.hasDaily ? follow.gain[k] : undefined);
+  const fTotal = (k: string) => follow?.total[k] ?? 0;
+  const fVal = (k: string) => fGain(k) ?? fTotal(k);
   const pd = b.pageDaily[day] ?? {};
   const pp = b.pageDaily[prevDay] ?? {};
   const top = useMemo(() => Object.entries(b.posts)
-    .map(([key, p]) => ({ key, p, v: b.postDaily[key]?.[day]?.v ?? 0, r: b.postDaily[key]?.[day]?.r ?? 0 }))
-    .filter((x) => x[by] > 0).sort((a, c) => c[by] - a[by]).slice(0, 10), [b, day, by]);
+    .map(([key, p]) => ({ key, p, v: b.postDaily[key]?.[day]?.v ?? 0, r: b.postDaily[key]?.[day]?.r ?? 0, f: fVal(key) }))
+    .filter((x) => x[by] > 0).sort((a, c) => c[by] - a[by]).slice(0, 10),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [b, day, by, follow]);
   const newPosts = useMemo(() => Object.values(b.posts).filter((p) => metaDay(p.createdTime) === day).length, [b.posts, day]);
   const weekEnd = day > addDays(lastDay, -3) ? lastDay : addDays(day, 3);
   const week = daysBetween(addDays(weekEnd, -6), weekEnd).filter((d) => d >= firstDay).map((d) => ({ day: d, v: b.pageDaily[d]?.mediaViews ?? 0 }));
   const weekMax = Math.max(...week.map((w) => w.v), 1);
-  const stats: { label: string; cur?: number; prev?: number; money?: boolean; plus?: boolean; color: string }[] = [
-    { label: "ยอดดู", cur: pd.mediaViews, prev: pp.mediaViews, color: "var(--color-c1)" },
-    { label: "วิดีโอวิว", cur: pd.videoViews, prev: pp.videoViews, color: "var(--color-c2)" },
-    { label: "ผู้ชม", cur: pd.reach, prev: pp.reach, color: "var(--color-c3)" },
-    { label: "ผู้ติดตามใหม่", cur: pd.newFollows, prev: pp.newFollows, plus: true, color: "var(--color-c4)" },
-    { label: "รายได้", cur: pd.revenue, prev: pp.revenue, money: true, color: "var(--color-c5)" },
-    { label: "การมีส่วนร่วม", cur: pd.engagements, prev: pp.engagements, color: "var(--color-c6)" },
+  const stats: Stat[] = [
+    { kind: "views", label: "ยอดดู", cur: pd.mediaViews, prev: pp.mediaViews, color: "var(--color-c1)", icon: Eye },
+    { kind: "video", label: "วิดีโอวิว", cur: pd.videoViews, prev: pp.videoViews, color: "var(--color-c2)", icon: PlayCircle },
+    { kind: "reach", label: "ผู้ชม", cur: pd.reach, prev: pp.reach, color: "var(--color-c3)", icon: Users },
+    { kind: "follows", label: "ผู้ติดตามใหม่", cur: pd.newFollows, prev: pp.newFollows, plus: true, color: "var(--color-c4)", icon: UserPlus },
+    { kind: "revenue", label: "รายได้", cur: pd.revenue, prev: pp.revenue, money: true, color: "var(--color-c5)", icon: CircleDollarSign },
+    { kind: "engage", label: "การมีส่วนร่วม", cur: pd.engagements, prev: pp.engagements, color: "var(--color-c6)", icon: Heart },
   ];
+  const [detail, setDetail] = useState<Stat | null>(null);
 
   return (
     <section className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
@@ -230,9 +240,11 @@ function DailySummary({ b, firstDay, lastDay, title }: { b: PageBundle; firstDay
         </div>
         <div className="grid grid-cols-2 gap-px border-b border-line bg-line">
           {stats.map((s) => (
-            <div key={s.label} className="flex flex-col justify-center bg-surface px-5 py-4">
-              <div className="flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-muted">
+            <button key={s.label} onClick={() => setDetail(s)} title={`ดูว่า${s.label}มาจากคลิปไหนบ้าง`}
+              className="group flex flex-col justify-center bg-surface px-5 py-4 text-left transition-colors hover:bg-hover">
+              <div className="flex w-full items-center gap-1.5 whitespace-nowrap text-xs font-medium text-muted">
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />{s.label}
+                <ChevronRight size={14} className="ml-auto text-faint opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100" />
               </div>
               <div className="num mt-1.5 text-xl font-semibold">
                 {s.cur == null ? <Dash /> : s.money ? usd(s.cur) : `${s.plus && s.cur > 0 ? "+" : ""}${num(s.cur)}`}
@@ -241,7 +253,7 @@ function DailySummary({ b, firstDay, lastDay, title }: { b: PageBundle; firstDay
                 <Growth g={s.cur == null ? undefined : pct(s.cur, s.prev ?? 0)} size="xs" />
                 <span className="text-muted">vs {thDay(prevDay)}</span>
               </div>
-            </div>
+            </button>
           ))}
         </div>
         <div className="flex flex-1 flex-col px-5 pb-4 pt-4">
@@ -274,8 +286,15 @@ function DailySummary({ b, firstDay, lastDay, title }: { b: PageBundle; firstDay
           <div className="seg">
             <button data-active={by === "v"} onClick={() => setBy("v")}>วิว</button>
             <button data-active={by === "r"} onClick={() => setBy("r")}>รายได้</button>
+            <button data-active={by === "f"} onClick={() => setBy("f")}>ผู้ติดตาม</button>
           </div>
         </div>
+        {by === "f" && follow && !follow.hasDaily && (
+          <div className="flex items-start gap-2 border-b border-line bg-primary-soft px-5 py-2 text-xs text-text">
+            <Info size={14} className="mt-0.5 shrink-0 text-primary-text" />
+            <span>{follow.fromLater ? <>ยังไม่มีข้อมูล sync ของวันนี้ จึงแสดง<b>ยอดผู้ติดตามรวมล่าสุด</b>ของแต่ละโพสต์</> : <>ยังไม่มี sync ของวันก่อนหน้าให้เทียบ จึงแสดงเป็น<b>ยอดผู้ติดตามรวม</b>ของแต่ละโพสต์</>} — กด Sync ทุกวันเพื่อดูยอดรายวัน</span>
+          </div>
+        )}
         {top.length ? (
           <ol className="flex-1 divide-y divide-line">
             {top.map((t, i) => {
@@ -291,10 +310,19 @@ function DailySummary({ b, firstDay, lastDay, title }: { b: PageBundle; firstDay
                         <div className="h-full rounded-full bg-primary" style={{ width: `${share}%` }} />
                       </div>
                     </div>
-                    <div className="w-20 text-right">
-                      <div className={`num text-sm font-semibold ${by === "r" ? "text-up" : ""}`}>{by === "v" ? num(t.v) : usd(t.r)}</div>
+                    <div className="w-24 text-right">
+                      <div className={`num text-sm font-semibold ${by === "r" ? "text-up" : ""}`}>
+                        {by === "v" ? num(t.v) : by === "r" ? usd(t.r) : fGain(t.key) != null ? `+${num(t.f)}` : num(t.f)}
+                      </div>
                       <div className="num text-xs text-muted">{by === "v" ? (t.r ? usd(t.r) : "") : `${compact(t.v)} วิว`}</div>
                     </div>
+                    {by !== "f" && <div className="hidden w-20 text-right sm:block" title={fGain(t.key) != null ? "ผู้ติดตามที่ได้จากโพสต์ในวันนี้" : "ผู้ติดตามที่ได้จากโพสต์ (รวมทั้งหมด)"}>
+                      <div className="num inline-flex items-center gap-1 text-sm font-medium text-text">
+                        <UserPlus size={13} className="text-[var(--color-c4)]" />
+                        {fGain(t.key) != null ? `+${num(fGain(t.key)!)}` : fTotal(t.key) ? num(fTotal(t.key)) : "–"}
+                      </div>
+                      <div className="text-[11px] text-muted">{fGain(t.key) != null ? "ผู้ติดตามวันนี้" : "ผู้ติดตามรวม"}</div>
+                    </div>}
                   </Link>
                 </li>
               );
@@ -302,6 +330,147 @@ function DailySummary({ b, firstDay, lastDay, title }: { b: PageBundle; firstDay
           </ol>
         ) : <EmptyState title="ไม่มีข้อมูลของวันนี้" hint="Meta อาจยังไม่อัปเดตตัวเลขของวันนี้ ลองเลือกวันก่อนหน้า" />}
       </div>
+      <Breakdown stat={detail} onClose={() => setDetail(null)} b={b} day={day} prevDay={prevDay} title={title} follow={follow} />
     </section>
+  );
+}
+
+type Stat = { kind: "views" | "video" | "reach" | "follows" | "revenue" | "engage"; label: string; cur?: number; prev?: number;
+  money?: boolean; plus?: boolean; color: string; icon: typeof Eye };
+
+const BASIS: Record<Stat["kind"], { exact: boolean; note: string }> = {
+  video: { exact: true, note: "วิดีโอวิว (ดูนาน 3 วินาทีขึ้นไป) ของแต่ละคลิปในวันนั้น จากข้อมูลรายวันของ Meta" },
+  revenue: { exact: true, note: "รายได้ของแต่ละคลิปในวันนั้น จากข้อมูลรายวันของ Meta" },
+  views: { exact: false, note: "Meta ไม่มียอดดูรายวันแยกต่อโพสต์ จึงแสดงสัดส่วนตามวิดีโอวิวของแต่ละคลิปในวันนั้นแทน" },
+  reach: { exact: false, note: "Meta ไม่มีผู้ชมรายวันแยกต่อโพสต์ จึงแสดงสัดส่วนตามวิดีโอวิวของแต่ละคลิปในวันนั้นแทน" },
+  engage: { exact: false, note: "Meta ไม่มีการมีส่วนร่วมรายวันแยกต่อโพสต์ จึงแสดงสัดส่วนตามวิดีโอวิวของแต่ละคลิปในวันนั้นแทน" },
+  follows: { exact: false, note: "Meta ให้ผู้ติดตามจากโพสต์เป็นยอดรวมเท่านั้น ยอดรายวันคำนวณจากผลต่างของการ sync แต่ละวัน" },
+};
+
+function Breakdown({ stat, onClose, b, day, prevDay, title, follow }: {
+  stat: Stat | null; onClose: () => void; b: PageBundle; day: string; prevDay: string;
+  title: (k: string, p: PostInfo) => string; follow?: { gain: Record<string, number>; total: Record<string, number>; hasDaily: boolean; fromLater?: boolean };
+}) {
+  const [showAll, setShowAll] = useState(false);
+  const items = useMemo(() => {
+    if (!stat) return [];
+    return Object.entries(b.posts)
+      .map(([key, p]) => {
+        const d = b.postDaily[key]?.[day];
+        const v = stat.kind === "revenue" ? d?.r ?? 0
+          : stat.kind === "follows" ? (follow?.hasDaily ? follow.gain[key] ?? 0 : follow?.total[key] ?? 0)
+          : d?.v ?? 0;
+        return { key, p, v, views: d?.v ?? 0 };
+      })
+      .filter((x) => x.v > 0)
+      .sort((a, c) => c.v - a.v);
+  }, [stat, b, day, follow]);
+  if (!stat) return null;
+
+  const basis = BASIS[stat.kind];
+  const fmt = (n: number) => (stat.money ? usd(n) : num(n));
+  const attributed = items.reduce((a, x) => a + x.v, 0);
+  const pageTotal = stat.cur ?? 0;
+  // exact metrics: what posts don't explain (older posts / not in the system)
+  const remainder = basis.exact ? Math.max(0, pageTotal - attributed) : 0;
+  const denom = basis.exact ? Math.max(pageTotal, attributed) : attributed;
+  const share = (n: number) => (denom ? (n / denom) * 100 : 0);
+  const top3 = items.slice(0, 3).reduce((a, x) => a + x.v, 0);
+  const list = showAll ? items : items.slice(0, 15);
+  const followsTotalMode = stat.kind === "follows" && !follow?.hasDaily;
+  const palette = ["var(--color-c1)", "var(--color-c2)", "var(--color-c3)", "var(--color-c4)", "var(--color-c6)"];
+
+  return (
+    <Drawer open onClose={() => { setShowAll(false); onClose(); }}
+      icon={<span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: `color-mix(in srgb, ${stat.color} 15%, transparent)`, color: stat.color }}><stat.icon size={18} /></span>}
+      title={`${stat.label} มาจากคลิปไหนบ้าง`}
+      subtitle={`${thDay(day)} · เทียบ ${thDay(prevDay)}`}
+      footer={basis.note}>
+      {/* hero */}
+      <div className="px-5 pb-4 pt-5">
+        <div className="text-xs font-medium text-muted">{stat.label}ของเพจทั้งวัน</div>
+        <div className="mt-1 flex items-baseline gap-3">
+          <span className="num text-3xl font-semibold tracking-tight">{stat.cur == null ? "–" : `${stat.plus && pageTotal > 0 ? "+" : ""}${fmt(pageTotal)}`}</span>
+          <Growth g={stat.cur == null ? undefined : pct(pageTotal, stat.prev ?? 0)} pill />
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
+          <div className="rounded-xl bg-subtle px-3 py-2.5">
+            <div className="text-muted">จากคลิป</div>
+            <div className="num mt-0.5 text-base font-semibold">{num(items.length)}</div>
+          </div>
+          <div className="rounded-xl bg-subtle px-3 py-2.5">
+            <div className="text-muted">{basis.exact ? "รวมจากคลิป" : followsTotalMode ? "ยอดรวมคลิป" : "ฐานที่ใช้"}</div>
+            <div className="num mt-0.5 truncate text-base font-semibold">{stat.kind === "follows" || basis.exact ? fmt(attributed) : `${compact(attributed)} วิว`}</div>
+          </div>
+          <div className="rounded-xl bg-subtle px-3 py-2.5">
+            <div className="text-muted">Top 3</div>
+            <div className="num mt-0.5 text-base font-semibold">{share(top3).toFixed(0)}%</div>
+          </div>
+        </div>
+        {/* stacked share bar */}
+        {items.length > 0 && (
+          <div className="mt-4">
+            <div className="flex h-2.5 overflow-hidden rounded-full bg-subtle">
+              {items.slice(0, 5).map((x, i) => (
+                <span key={x.key} title={`${i + 1}. ${share(x.v).toFixed(1)}%`} style={{ width: `${share(x.v)}%`, background: palette[i] }} className="h-full first:rounded-l-full" />
+              ))}
+              <span className="h-full flex-1 bg-line-strong/60" />
+            </div>
+            <div className="mt-1.5 flex justify-between text-[11px] text-muted"><span>5 อันดับแรก</span><span>อื่นๆ</span></div>
+          </div>
+        )}
+        {followsTotalMode && (
+          <div className="mt-4 flex items-start gap-2 rounded-xl bg-primary-soft px-3 py-2.5 text-xs">
+            <Info size={14} className="mt-0.5 shrink-0 text-primary-text" />
+            <span>{follow?.fromLater ? <>ยังไม่มีข้อมูล sync ของวันนี้ จึงแสดง<b>ยอดผู้ติดตามรวมล่าสุด</b>ของแต่ละคลิป</> : <>ยังไม่มี sync ของวันก่อนหน้าให้เทียบ จึงแสดง<b>ยอดผู้ติดตามรวม</b>ของแต่ละคลิป</>} — กด Sync ทุกวันเพื่อดูยอดรายวัน</span>
+          </div>
+        )}
+      </div>
+
+      {/* list */}
+      {items.length ? (
+        <ol className="border-t border-line">
+          {list.map((x, i) => (
+            <li key={x.key} className="border-b border-line last:border-b-0">
+              <Link href={`/p/${b.page.id}/post/${x.key}`} onClick={onClose}
+                className="group flex items-center gap-3 px-5 py-3 transition-colors hover:bg-hover">
+                <span className={`num flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${i < 3 ? "bg-primary-soft text-primary-text" : "text-faint"}`}>{i + 1}</span>
+                <Thumb src={x.p.picture} type={x.p.type} size={44} />
+                <div className="min-w-0 flex-1">
+                  <div className="line-clamp-2 text-[13px] leading-snug group-hover:text-primary-text">{title(x.key, x.p)}</div>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-subtle">
+                      <div className="h-full rounded-full" style={{ width: `${Math.max(2, share(x.v))}%`, background: i < 5 ? palette[i] : "var(--color-faint)" }} />
+                    </div>
+                    <span className="num w-11 text-right text-[11px] text-muted">{share(x.v).toFixed(share(x.v) < 10 ? 1 : 0)}%</span>
+                  </div>
+                </div>
+                <div className="w-20 shrink-0 text-right">
+                  <div className={`num text-sm font-semibold ${stat.kind === "revenue" ? "text-up" : ""}`}>
+                    {stat.kind === "follows" ? (followsTotalMode ? num(x.v) : `+${num(x.v)}`) : basis.exact ? fmt(x.v) : `${compact(x.v)}`}
+                  </div>
+                  <div className="text-[11px] text-muted">{stat.kind === "revenue" || stat.kind === "follows" ? `${compact(x.views)} วิว` : basis.exact ? "" : "วิดีโอวิว"}</div>
+                </div>
+              </Link>
+            </li>
+          ))}
+          {remainder > 0 && (
+            <li className="flex items-center gap-3 border-t border-dashed border-line px-5 py-3 text-muted">
+              <span className="w-6" />
+              <span className="flex h-11 w-11 items-center justify-center rounded-[10px] border border-dashed border-line-strong text-xs">อื่นๆ</span>
+              <div className="min-w-0 flex-1 text-[13px]">โพสต์อื่น / โพสต์เก่าที่ไม่อยู่ในระบบ<div className="num text-[11px]">{share(remainder).toFixed(1)}%</div></div>
+              <div className="num w-20 text-right text-sm font-medium">{fmt(remainder)}</div>
+            </li>
+          )}
+        </ol>
+      ) : (
+        <EmptyState title="ไม่มีข้อมูลรายคลิปของวันนี้" hint="Meta อาจยังไม่อัปเดตตัวเลขรายคลิป ลองเลือกวันก่อนหน้า" />
+      )}
+      {items.length > 15 && (
+        <div className="px-5 py-3">
+          <button className="btn w-full" onClick={() => setShowAll((v) => !v)}>{showAll ? "แสดงน้อยลง" : `ดูทั้งหมด ${items.length} คลิป`}</button>
+        </div>
+      )}
+    </Drawer>
   );
 }

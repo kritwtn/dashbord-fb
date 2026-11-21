@@ -83,3 +83,34 @@ export type AudienceDay = { country?: [string, number][]; city?: [string, number
 export async function loadAudience(pageId: string): Promise<Record<string, AudienceDay>> {
   return (await db().ref(`audience/${pageId}`).get()).val() ?? {};
 }
+
+/**
+ * Followers gained per post on a given day, derived from sync snapshots (Meta only exposes a lifetime
+ * total per post): last snapshot of `day` minus last snapshot before `day`. Sync ids are
+ * yyyymmdd-hhmmss in Bangkok time, so "day" here is approximate vs Meta's Pacific days.
+ *   gain[post]  = followers gained that day (only when both snapshots exist, or the post is new that day)
+ *   total[post] = lifetime followers from the latest snapshot up to that day
+ */
+export async function loadFollowGains(pageId: string, day: string) {
+  const ids = Object.keys((await db().ref(`syncs/${pageId}`).get()).val() ?? {}).sort();
+  const d = day.replace(/-/g, "");
+  const onDay = ids.filter((k) => k.slice(0, 8) === d).at(-1);
+  const before = ids.filter((k) => k.slice(0, 8) < d).at(-1);
+  // nothing synced up to that day yet → fall back to the latest lifetime totals (flagged)
+  const upTo = onDay ?? before ?? ids.at(-1);
+  const fromLater = !onDay && !before && !!upTo;
+  const [cur, prev] = await Promise.all([
+    upTo ? db().ref(`snapshots/${pageId}/${upTo}`).get().then((s) => s.val() ?? {}) : {},
+    onDay && before ? db().ref(`snapshots/${pageId}/${before}`).get().then((s) => s.val() ?? {}) : null,
+  ]);
+  const total: Record<string, number> = {};
+  const gain: Record<string, number> = {};
+  for (const [k, m] of Object.entries<any>(cur)) {
+    const t = Number(m?.followersGained) || 0;
+    total[k] = t;
+    if (!onDay) continue;
+    if (prev && prev[k]) gain[k] = Math.max(0, t - (Number(prev[k].followersGained) || 0));
+    else if (prev) gain[k] = t; // first seen after the previous snapshot → new post
+  }
+  return { gain, total, hasDaily: !!(onDay && before), fromLater };
+}

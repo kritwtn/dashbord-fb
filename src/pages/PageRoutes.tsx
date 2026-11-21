@@ -1,12 +1,13 @@
 import { Outlet, useOutletContext, useParams } from "react-router-dom";
 import { AppShell } from "@/components/AppShell";
+import { AudienceView } from "@/components/AudienceView";
 import { Overview } from "@/components/Overview";
 import { PostDetail } from "@/components/PostDetail";
 import { PostsView } from "@/components/PostsView";
 import { ErrorState } from "@/components/ui";
 import { REFRESH_EVENT } from "@/lib/nav";
 import { useAuth } from "@/lib/auth";
-import { listPages, loadPage, loadPost, recentSyncs } from "@/lib/data";
+import { listPages, loadAudience, loadPage, loadPost, recentSyncs } from "@/lib/data";
 import type { PageInfo } from "@/lib/types";
 import { useData } from "@/lib/useData";
 import { PageSkeleton } from "./Skeleton";
@@ -61,4 +62,13 @@ export function PostPage() {
     <PostDetail pageId={pageId} pageName={data.page?.name ?? ""} pageIndex={pageIndex}
       post={data.post} latest={data.latest} daily={data.daily} snapshots={data.snapshots} postNo={data.postNo} />
   );
+}
+
+export function AudiencePage() {
+  const { pageId = "" } = useParams();
+  const { pages, pageIndex } = useOutletContext<Ctx>();
+  const { data, error } = useData(() => loadAudience(pageId), [pageId]);
+  if (error) return <Failed error={error} />;
+  if (!data) return <PageSkeleton />;
+  return <AudienceView key={pageId} data={data} pageName={pages[pageIndex]?.name ?? ""} pageIndex={pageIndex} />;
 }

@@ -1,5 +1,5 @@
 import { db, safeKey } from "./store";
-import { fetchPageDaily, fetchPostDaily, fetchPostMetrics, fetchPosts, fetchStories, pageToken, refreshPages } from "./fb";
+import { fetchAudience, fetchPageDaily, fetchPostDaily, fetchPostMetrics, fetchPosts, fetchStories, pageToken, refreshPages } from "./fb";
 import type { Metrics, PostInfo, SyncRun } from "./types";
 
 /** Sync id sorts chronologically and is a valid Firebase key, e.g. 20261121-204512 (Asia/Bangkok). */
@@ -63,11 +63,13 @@ export async function syncPage(pageId: string, opts: SyncOptions = {}): Promise<
     ? Math.ceil((at - oldest) / DAY) + 2
     : opts.dailyDays ?? (lastSyncAt ? Math.min(90, Math.max(3, Math.ceil((at - lastSyncAt) / DAY) + 2)) : 30);
 
-  const [metrics, daily, pageDaily, stories] = await Promise.all([
+  const [metrics, daily, pageDaily, stories, audience] = await Promise.all([
     fetchPostMetrics(refresh, token),
     fetchPostDaily(refresh.map((p) => p.info), token, dailyDays),
     fetchPageDaily(pageId, token, dailyDays),
     fetchStories(pageId, token).catch(() => []), // stories only exist for 24h; best effort
+    // audience lags ~2 days, so always look back at least a week
+    fetchAudience(pageId, token, Math.max(dailyDays, 7)).catch(() => ({})),
   ]);
 
   const updates: Record<string, unknown> = {};
@@ -90,6 +92,7 @@ export async function syncPage(pageId: string, opts: SyncOptions = {}): Promise<
     updates[`latest/${pageId}/${k}`] = { ...s.metrics, syncId: id, at };
   }
   for (const [day, v] of Object.entries(pageDaily)) updates[`pageDaily/${pageId}/${day}`] = v;
+  for (const [day, v] of Object.entries(audience)) updates[`audience/${pageId}/${day}`] = v;
   const run: SyncRun = {
     id, at, source,
     postCount: posts.length + stories.length,

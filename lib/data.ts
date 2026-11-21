@@ -78,3 +78,8 @@ export async function recentSyncs(pageId: string, n = 8): Promise<SyncRun[]> {
   const v = (await db().ref(`syncs/${pageId}`).orderByKey().limitToLast(n).get()).val() ?? {};
   return Object.values<SyncRun>(v).sort((a, b) => b.at - a.at);
 }
+
+export type AudienceDay = { country?: [string, number][]; city?: [string, number][] };
+export async function loadAudience(pageId: string): Promise<Record<string, AudienceDay>> {
+  return (await db().ref(`audience/${pageId}`).get()).val() ?? {};
+}

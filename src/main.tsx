@@ -9,7 +9,7 @@ import { TopProgress } from "@/components/TopProgress";
 import { AuthProvider } from "@/lib/auth";
 import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
-import { OverviewPage, PageLayout, PostPage, PostsPage } from "./pages/PageRoutes";
+import { AudiencePage, OverviewPage, PageLayout, PostPage, PostsPage } from "./pages/PageRoutes";
 import { RequireAdmin } from "./pages/RequireAdmin";
 
 createRoot(document.getElementById("root")!).render(
@@ -28,6 +28,7 @@ createRoot(document.getElementById("root")!).render(
                 <Route path="/p/:pageId" element={<PageLayout />}>
                   <Route index element={<OverviewPage />} />
                   <Route path="posts" element={<PostsPage />} />
+                  <Route path="audience" element={<AudiencePage />} />
                   <Route path="post/:postKey" element={<PostPage />} />
                 </Route>
               </Route>

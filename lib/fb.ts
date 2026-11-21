@@ -358,3 +358,44 @@ export async function fetchPageDaily(pageId: string, token: string, days = 30) {
   }
   return out;
 }
+
+/** [name, followers] pairs, largest first. Stored as arrays because city names may contain "." etc. */
+export type Pairs = [string, number][];
+export type AudienceDay = { country?: Pairs; city?: Pairs };
+
+const toPairs = (o: Record<string, number> | null | undefined): Pairs =>
+  Object.entries(o ?? {})
+    .map(([k, v]) => [k, Number(v) || 0] as [string, number])
+    .sort((a, b) => b[1] - a[1]);
+
+/**
+ * Follower totals by country and by city (Meta returns the top 45 cities only), one snapshot per day.
+ * Values are cumulative; the per-day gain is the difference between consecutive days.
+ * Meta lags ~2 days here and repeats the last value for the newest days.
+ */
+export async function fetchAudience(pageId: string, token: string, days = 30) {
+  const out: Record<string, AudienceDay> = {};
+  const end = new Date();
+  end.setUTCDate(end.getUTCDate() + 1);
+  for (let left = days; left > 0; left -= 90) {
+    const span = Math.min(90, left);
+    const since = new Date(end.getTime() - span * 86400000);
+    const r: any = await graph(`${pageId}/insights`, token, {
+      metric: "page_follows_country,page_follows_city",
+      period: "day",
+      since: unix(since),
+      until: unix(end),
+    });
+    for (const m of r.data ?? []) {
+      const key = m.name === "page_follows_country" ? "country" : m.name === "page_follows_city" ? "city" : null;
+      if (!key) continue;
+      for (const v of m.values) {
+        if (!v.end_time || new Date(v.end_time).getTime() - 86400000 > Date.now()) continue;
+        const pairs = toPairs(v.value);
+        if (pairs.length) (out[dayOf(v.end_time)] ??= {})[key] = pairs;
+      }
+    }
+    end.setTime(since.getTime());
+  }
+  return out;
+}

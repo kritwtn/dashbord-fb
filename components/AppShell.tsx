@@ -1,5 +1,5 @@
 import {
-  Bell, ChevronDown, Eye, EyeOff, History, LayoutDashboard, ListVideo, LogOut, Menu, PanelLeftClose, PanelLeftOpen, RefreshCw, Search, X,
+  Bell, ChevronDown, Eye, EyeOff, Globe2, History, LayoutDashboard, ListVideo, LogOut, Menu, PanelLeftClose, PanelLeftOpen, RefreshCw, Search, X,
 } from "lucide-react";
 import Link from "@/lib/nav";
 import { usePathname, useRouter, useSearchParams } from "@/lib/nav";
@@ -71,6 +71,7 @@ export function AppShell({ pages, pageId, email, syncs, children }: Props) {
   const nav = [
     { href: `/p/${pageId}`, label: "ภาพรวม", icon: LayoutDashboard, active: pathname === `/p/${pageId}` },
     { href: `/p/${pageId}/posts`, label: "โพสต์ทั้งหมด", icon: ListVideo, active: pathname.startsWith(`/p/${pageId}/post`) },
+    { href: `/p/${pageId}/audience`, label: "ผู้ติดตาม", icon: Globe2, active: pathname.startsWith(`/p/${pageId}/audience`) },
   ];
   const title = nav.find((n) => n.active)?.label ?? "รายละเอียดโพสต์";
   const last = syncs[0];
@@ -126,7 +127,8 @@ export function AppShell({ pages, pageId, email, syncs, children }: Props) {
       <div className={`min-h-0 flex-1 space-y-0.5 overflow-y-auto pb-3 ${mini ? "px-2" : "px-3"}`}>
         {pages.map((p, i) => {
           const active = p.id === pageId;
-          const sub = pathname.replace(`/p/${pageId}`, "").startsWith("/posts") ? "/posts" : "";
+          const rest = pathname.replace(`/p/${pageId}`, "");
+          const sub = rest.startsWith("/posts") ? "/posts" : rest.startsWith("/audience") ? "/audience" : "";
           const name = maskPage(secret, p.name, i);
           return mini ? (
             <Link key={p.id} href={`/p/${p.id}${sub}${qs}`} title={name} aria-current={active ? "page" : undefined}

@@ -200,9 +200,12 @@ function DailySummary({ b, firstDay, lastDay, title }: { b: PageBundle; firstDay
   const prevDay = addDays(day, -1);
   // followers per post: Meta only gives a lifetime total, so the per-day gain comes from sync snapshots
   const follow = useData(() => loadFollowGains(b.page.id, day), [b.page.id, day]).data;
-  const fGain = (k: string) => (follow?.hasDaily ? follow.gain[k] : undefined);
-  const fTotal = (k: string) => follow?.total[k] ?? 0;
-  const fVal = (k: string) => fGain(k) ?? fTotal(k);
+  const followExact = !!follow?.hasDaily;
+  const vDay = (k: string) => b.postDaily[k]?.[day]?.v ?? 0;
+  const vSum = useMemo(() => Object.keys(b.posts).reduce((a, k) => a + (b.postDaily[k]?.[day]?.v ?? 0), 0), [b, day]);
+  // followers gained by a clip ON THE SELECTED DAY: exact (sync diff) or ≈ page new follows × clip's share of that day's video views
+  const fVal = (k: string) =>
+    followExact ? follow!.gain[k] ?? 0 : vSum ? Math.round(((b.pageDaily[day]?.newFollows ?? 0) * vDay(k)) / vSum) : 0;
   const pd = b.pageDaily[day] ?? {};
   const pp = b.pageDaily[prevDay] ?? {};
   const top = useMemo(() => Object.entries(b.posts)
@@ -289,10 +292,10 @@ function DailySummary({ b, firstDay, lastDay, title }: { b: PageBundle; firstDay
             <button data-active={by === "f"} onClick={() => setBy("f")}>ผู้ติดตาม</button>
           </div>
         </div>
-        {by === "f" && follow && !follow.hasDaily && (
+        {by === "f" && follow && !followExact && (
           <div className="flex items-start gap-2 border-b border-line bg-primary-soft px-5 py-2 text-xs text-text">
             <Info size={14} className="mt-0.5 shrink-0 text-primary-text" />
-            <span>{follow.fromLater ? <>ยังไม่มีข้อมูล sync ของวันนี้ จึงแสดง<b>ยอดผู้ติดตามรวมล่าสุด</b>ของแต่ละโพสต์</> : <>ยังไม่มี sync ของวันก่อนหน้าให้เทียบ จึงแสดงเป็น<b>ยอดผู้ติดตามรวม</b>ของแต่ละโพสต์</>} — กด Sync ทุกวันเพื่อดูยอดรายวัน</span>
+            <span><b>≈ ประมาณการ</b>: ผู้ติดตามใหม่ของเพจวันนี้ แบ่งตามสัดส่วนวิดีโอวิวของแต่ละคลิป (ยังไม่มี sync ของวันนี้และวันก่อนหน้าให้คำนวณยอดจริง)</span>
           </div>
         )}
         {top.length ? (
@@ -312,16 +315,16 @@ function DailySummary({ b, firstDay, lastDay, title }: { b: PageBundle; firstDay
                     </div>
                     <div className="w-24 text-right">
                       <div className={`num text-sm font-semibold ${by === "r" ? "text-up" : ""}`}>
-                        {by === "v" ? num(t.v) : by === "r" ? usd(t.r) : fGain(t.key) != null ? `+${num(t.f)}` : num(t.f)}
+                        {by === "v" ? num(t.v) : by === "r" ? usd(t.r) : `${followExact ? "+" : "≈ +"}${num(t.f)}`}
                       </div>
                       <div className="num text-xs text-muted">{by === "v" ? (t.r ? usd(t.r) : "") : `${compact(t.v)} วิว`}</div>
                     </div>
-                    {by !== "f" && <div className="hidden w-20 text-right sm:block" title={fGain(t.key) != null ? "ผู้ติดตามที่ได้จากโพสต์ในวันนี้" : "ผู้ติดตามที่ได้จากโพสต์ (รวมทั้งหมด)"}>
+                    {by !== "f" && <div className="hidden w-20 text-right sm:block" title={followExact ? "ผู้ติดตามที่ได้จากคลิปในวันนี้" : "ประมาณการผู้ติดตามที่ได้จากคลิปในวันนี้"}>
                       <div className="num inline-flex items-center gap-1 text-sm font-medium text-text">
                         <UserPlus size={13} className="text-[var(--color-c4)]" />
-                        {fGain(t.key) != null ? `+${num(fGain(t.key)!)}` : fTotal(t.key) ? num(fTotal(t.key)) : "–"}
+                        {t.f ? `${followExact ? "+" : "≈+"}${num(t.f)}` : "–"}
                       </div>
-                      <div className="text-[11px] text-muted">{fGain(t.key) != null ? "ผู้ติดตามวันนี้" : "ผู้ติดตามรวม"}</div>
+                      <div className="text-[11px] text-muted">ผู้ติดตามวันนี้</div>
                     </div>}
                   </Link>
                 </li>
@@ -338,13 +341,13 @@ function DailySummary({ b, firstDay, lastDay, title }: { b: PageBundle; firstDay
 type Stat = { kind: "views" | "video" | "reach" | "follows" | "revenue" | "engage"; label: string; cur?: number; prev?: number;
   money?: boolean; plus?: boolean; color: string; icon: typeof Eye };
 
-const BASIS: Record<Stat["kind"], { exact: boolean; note: string }> = {
-  video: { exact: true, note: "วิดีโอวิว (ดูนาน 3 วินาทีขึ้นไป) ของแต่ละคลิปในวันนั้น จากข้อมูลรายวันของ Meta" },
-  revenue: { exact: true, note: "รายได้ของแต่ละคลิปในวันนั้น จากข้อมูลรายวันของ Meta" },
-  views: { exact: false, note: "Meta ไม่มียอดดูรายวันแยกต่อโพสต์ จึงแสดงสัดส่วนตามวิดีโอวิวของแต่ละคลิปในวันนั้นแทน" },
-  reach: { exact: false, note: "Meta ไม่มีผู้ชมรายวันแยกต่อโพสต์ จึงแสดงสัดส่วนตามวิดีโอวิวของแต่ละคลิปในวันนั้นแทน" },
-  engage: { exact: false, note: "Meta ไม่มีการมีส่วนร่วมรายวันแยกต่อโพสต์ จึงแสดงสัดส่วนตามวิดีโอวิวของแต่ละคลิปในวันนั้นแทน" },
-  follows: { exact: false, note: "Meta ให้ผู้ติดตามจากโพสต์เป็นยอดรวมเท่านั้น ยอดรายวันคำนวณจากผลต่างของการ sync แต่ละวัน" },
+const BASIS: Record<Stat["kind"], string> = {
+  video: "วิดีโอวิว (ดูนาน 3 วินาทีขึ้นไป) ของแต่ละคลิปในวันที่เลือก จากข้อมูลรายวันของ Meta",
+  revenue: "รายได้ของแต่ละคลิปในวันที่เลือก จากข้อมูลรายวันของ Meta",
+  views: "≈ ประมาณการ: Meta ไม่มียอดดูรายวันแยกต่อคลิป จึงแบ่งยอดดูของเพจวันนั้นตามสัดส่วนวิดีโอวิวของแต่ละคลิปในวันเดียวกัน",
+  reach: "≈ ประมาณการ: Meta ไม่มีผู้ชมรายวันแยกต่อคลิป จึงแบ่งผู้ชมของเพจวันนั้นตามสัดส่วนวิดีโอวิวของแต่ละคลิปในวันเดียวกัน",
+  engage: "≈ ประมาณการ: Meta ไม่มีการมีส่วนร่วมรายวันแยกต่อคลิป จึงแบ่งยอดของเพจวันนั้นตามสัดส่วนวิดีโอวิวของแต่ละคลิปในวันเดียวกัน",
+  follows: "ผู้ติดตามที่ได้จากแต่ละคลิปในวันที่เลือก: คำนวณจากผลต่างการ sync ของวันนั้นกับวันก่อนหน้า ถ้าไม่มี sync ให้เทียบจะเป็น ≈ ประมาณการตามสัดส่วนวิดีโอวิว",
 };
 
 function Breakdown({ stat, onClose, b, day, prevDay, title, follow }: {
@@ -352,40 +355,39 @@ function Breakdown({ stat, onClose, b, day, prevDay, title, follow }: {
   title: (k: string, p: PostInfo) => string; follow?: { gain: Record<string, number>; total: Record<string, number>; hasDaily: boolean; fromLater?: boolean };
 }) {
   const [showAll, setShowAll] = useState(false);
+  const pageTotal = stat?.cur ?? 0;
+  const exact = !!stat && (stat.kind === "video" || stat.kind === "revenue" || (stat.kind === "follows" && !!follow?.hasDaily));
   const items = useMemo(() => {
     if (!stat) return [];
-    return Object.entries(b.posts)
-      .map(([key, p]) => {
-        const d = b.postDaily[key]?.[day];
-        const v = stat.kind === "revenue" ? d?.r ?? 0
-          : stat.kind === "follows" ? (follow?.hasDaily ? follow.gain[key] ?? 0 : follow?.total[key] ?? 0)
-          : d?.v ?? 0;
-        return { key, p, v, views: d?.v ?? 0 };
-      })
-      .filter((x) => x.v > 0)
-      .sort((a, c) => c.v - a.v);
-  }, [stat, b, day, follow]);
+    const rows = Object.entries(b.posts).map(([key, p]) => {
+      const d = b.postDaily[key]?.[day];
+      return { key, p, views: d?.v ?? 0, rev: d?.r ?? 0, v: 0 };
+    });
+    const vSum = rows.reduce((a, x) => a + x.views, 0);
+    for (const x of rows)
+      x.v = stat.kind === "video" ? x.views
+        : stat.kind === "revenue" ? x.rev
+        : stat.kind === "follows" && follow?.hasDaily ? follow.gain[x.key] ?? 0
+        : vSum ? (pageTotal * x.views) / vSum : 0; // ≈ share of that day's video views
+    return rows.filter((x) => x.v > 0).sort((a, c) => c.v - a.v);
+  }, [stat, b, day, follow, pageTotal]);
   if (!stat) return null;
 
-  const basis = BASIS[stat.kind];
-  const fmt = (n: number) => (stat.money ? usd(n) : num(n));
+  const fmt = (n: number) => (stat.money ? usd(n) : num(Math.round(n)));
+  const show = (n: number) => `${exact ? "" : "≈ "}${stat.kind === "follows" ? "+" : ""}${fmt(n)}`;
   const attributed = items.reduce((a, x) => a + x.v, 0);
-  const pageTotal = stat.cur ?? 0;
-  // exact metrics: what posts don't explain (older posts / not in the system)
-  const remainder = basis.exact ? Math.max(0, pageTotal - attributed) : 0;
-  const denom = basis.exact ? Math.max(pageTotal, attributed) : attributed;
+  const remainder = exact && stat.kind !== "follows" ? Math.max(0, pageTotal - attributed) : 0;
+  const denom = exact ? Math.max(pageTotal, attributed) : pageTotal || attributed;
   const share = (n: number) => (denom ? (n / denom) * 100 : 0);
   const top3 = items.slice(0, 3).reduce((a, x) => a + x.v, 0);
   const list = showAll ? items : items.slice(0, 15);
-  const followsTotalMode = stat.kind === "follows" && !follow?.hasDaily;
   const palette = ["var(--color-c1)", "var(--color-c2)", "var(--color-c3)", "var(--color-c4)", "var(--color-c6)"];
-
   return (
     <Drawer open onClose={() => { setShowAll(false); onClose(); }}
       icon={<span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: `color-mix(in srgb, ${stat.color} 15%, transparent)`, color: stat.color }}><stat.icon size={18} /></span>}
       title={`${stat.label} มาจากคลิปไหนบ้าง`}
       subtitle={`${thDay(day)} · เทียบ ${thDay(prevDay)}`}
-      footer={basis.note}>
+      footer={BASIS[stat.kind]}>
       {/* hero */}
       <div className="px-5 pb-4 pt-5">
         <div className="text-xs font-medium text-muted">{stat.label}ของเพจทั้งวัน</div>
@@ -399,8 +401,8 @@ function Breakdown({ stat, onClose, b, day, prevDay, title, follow }: {
             <div className="num mt-0.5 text-base font-semibold">{num(items.length)}</div>
           </div>
           <div className="rounded-xl bg-subtle px-3 py-2.5">
-            <div className="text-muted">{basis.exact ? "รวมจากคลิป" : followsTotalMode ? "ยอดรวมคลิป" : "ฐานที่ใช้"}</div>
-            <div className="num mt-0.5 truncate text-base font-semibold">{stat.kind === "follows" || basis.exact ? fmt(attributed) : `${compact(attributed)} วิว`}</div>
+            <div className="text-muted">รวมจากคลิป</div>
+            <div className="num mt-0.5 truncate text-base font-semibold">{exact ? "" : "≈ "}{fmt(attributed)}</div>
           </div>
           <div className="rounded-xl bg-subtle px-3 py-2.5">
             <div className="text-muted">Top 3</div>
@@ -419,10 +421,10 @@ function Breakdown({ stat, onClose, b, day, prevDay, title, follow }: {
             <div className="mt-1.5 flex justify-between text-[11px] text-muted"><span>5 อันดับแรก</span><span>อื่นๆ</span></div>
           </div>
         )}
-        {followsTotalMode && (
+        {!exact && (
           <div className="mt-4 flex items-start gap-2 rounded-xl bg-primary-soft px-3 py-2.5 text-xs">
             <Info size={14} className="mt-0.5 shrink-0 text-primary-text" />
-            <span>{follow?.fromLater ? <>ยังไม่มีข้อมูล sync ของวันนี้ จึงแสดง<b>ยอดผู้ติดตามรวมล่าสุด</b>ของแต่ละคลิป</> : <>ยังไม่มี sync ของวันก่อนหน้าให้เทียบ จึงแสดง<b>ยอดผู้ติดตามรวม</b>ของแต่ละคลิป</>} — กด Sync ทุกวันเพื่อดูยอดรายวัน</span>
+            <span><b>≈ ประมาณการ</b> — Meta ไม่มี{stat.label}รายวันแยกต่อคลิป{stat.kind === "follows" ? " (และยังไม่มี sync ของวันนี้กับวันก่อนหน้าให้คำนวณยอดจริง)" : ""} จึงแบ่งยอด{thDay(day)}ของเพจตามสัดส่วนวิดีโอวิวของแต่ละคลิปในวันนั้น</span>
           </div>
         )}
       </div>
@@ -447,9 +449,9 @@ function Breakdown({ stat, onClose, b, day, prevDay, title, follow }: {
                 </div>
                 <div className="w-20 shrink-0 text-right">
                   <div className={`num text-sm font-semibold ${stat.kind === "revenue" ? "text-up" : ""}`}>
-                    {stat.kind === "follows" ? (followsTotalMode ? num(x.v) : `+${num(x.v)}`) : basis.exact ? fmt(x.v) : `${compact(x.v)}`}
+                    {show(x.v)}
                   </div>
-                  <div className="text-[11px] text-muted">{stat.kind === "revenue" || stat.kind === "follows" ? `${compact(x.views)} วิว` : basis.exact ? "" : "วิดีโอวิว"}</div>
+                  <div className="text-[11px] text-muted">{stat.kind === "video" ? "" : `${compact(x.views)} วิว`}</div>
                 </div>
               </Link>
             </li>

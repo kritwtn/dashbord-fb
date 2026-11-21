@@ -1,5 +1,5 @@
 import { db } from "./firebase";
-import { emptyMetrics, type Metrics, type PageDay, type PostInfo } from "./types";
+import { emptyMetrics, type Metrics, type PageDay, type PostDay, type PostInfo } from "./types";
 
 const V = process.env.FB_GRAPH_VERSION ?? "v23.0";
 const BASE = `https://graph.facebook.com/${V}`;
@@ -88,9 +88,49 @@ function classify(p: any): { type: PostInfo["type"]; videoId?: string } {
   if (reel) return { type: "reel", videoId: reel[1] };
   const vid = link.match(/\/videos\/(?:[^/]+\/)?(\d+)/);
   if (vid || p.status_type === "added_video") return { type: "video", videoId: vid?.[1] };
-  if (p.status_type === "added_photos" || p.full_picture) return { type: "photo" };
+  if (p.status_type === "added_photos") return { type: "photo" };
+  if (p.status_type === "shared_story" || /^https?:\/\//.test((p.message ?? "").trim().split(/\s/).pop() ?? "") && p.full_picture)
+    return { type: "link" };
+  if (p.full_picture) return { type: "photo" };
   if (p.status_type === "mobile_status_update" || p.status_type === "published_story") return { type: "text" };
   return { type: "other" };
+}
+
+/**
+ * Page stories currently live (Graph only returns stories from the last ~24h, so they are captured
+ * at sync time). Metrics: story_media_view (views), replies, shares.
+ */
+export async function fetchStories(pageId: string, token: string) {
+  const r: any = await graph(`${pageId}/stories`, token, { limit: "100" });
+  const list: any[] = (r.data ?? []).filter((s: any) => s.status === "published");
+  if (!list.length) return [];
+  const urls: string[] = [];
+  for (const s of list) {
+    urls.push(`${s.post_id}/insights?metric=story_media_view,pages_fb_story_replies,pages_fb_story_shares`);
+    urls.push(`${s.media_id}?fields=picture,full_picture`);
+  }
+  const res = await batch(urls, token);
+  return list.map((s, i) => {
+    const ins = res[i * 2];
+    const pic = res[i * 2 + 1];
+    const m = emptyMetrics();
+    if (!(ins instanceof FbError)) {
+      m.views = val(ins.data, "story_media_view") ?? 0;
+      m.comments = val(ins.data, "pages_fb_story_replies") ?? 0;
+      m.shares = val(ins.data, "pages_fb_story_shares") ?? 0;
+    }
+    const picture = !(pic instanceof FbError) ? pic.full_picture ?? pic.picture : undefined;
+    const info: PostInfo = {
+      id: `story_${s.post_id}`,
+      createdTime: new Date(Number(s.creation_time) * 1000).toISOString(),
+      message: "",
+      permalink: s.url ?? "",
+      statusType: `story_${s.media_type ?? ""}`,
+      type: "story",
+      ...(picture ? { picture } : {}),
+    };
+    return { info, metrics: m };
+  });
 }
 
 export type RawCounts = { comments?: number; reactions?: number; shares?: number };
@@ -145,6 +185,13 @@ const POST_LIFETIME = "post_media_view,post_total_media_view_unique,post_video_v
 
 const val = (data: any[] | undefined, name: string, period = "lifetime") =>
   data?.find((m) => m.name === name && m.period === period)?.values?.[0]?.value;
+/**
+ * Money values come as {currency, microAmount}; older metrics as a plain number.
+ * Despite the name, microAmount is in 1e-8 units: page content_monetization_earnings 1081015299
+ * equals monetization_approximate_earnings 10.81015299 for the same day.
+ */
+const usd = (v: any): number =>
+  v == null ? 0 : typeof v === "number" ? v : v.microAmount != null ? Number(v.microAmount) / 1e8 : 0;
 const sumObj = (o: any) => (o && typeof o === "object" ? Object.values(o).reduce((a: number, b: any) => a + (Number(b) || 0), 0) : 0);
 
 /** Lifetime metrics for many posts (batched). */
@@ -155,6 +202,7 @@ export async function fetchPostMetrics(
   const urls: string[] = [];
   for (const { info } of posts) {
     urls.push(`${info.id}/insights?metric=${POST_LIFETIME}&period=lifetime`);
+    urls.push(`${info.id}/insights?metric=content_monetization_earnings&period=lifetime`);
     if (info.videoId) {
       urls.push(`${info.videoId}/video_insights`);
       urls.push(`${info.videoId}?fields=length`);
@@ -173,6 +221,8 @@ export async function fetchPostMetrics(
       m.clicks = val(ins.data, "post_clicks") ?? 0;
       m.reactions = sumObj(val(ins.data, "post_reactions_by_type_total"));
     }
+    const earn = res[i++];
+    if (!(earn instanceof FbError)) m.revenue = usd(val(earn.data, "content_monetization_earnings"));
     if (counts.reactions != null) m.reactions = counts.reactions;
     m.shares = counts.shares ?? 0;
     m.comments = counts.comments ?? 0;
@@ -207,29 +257,45 @@ const dayOf = (endTime: string) => {
 };
 const unix = (d: Date) => Math.floor(d.getTime() / 1000).toString();
 
-/** Daily video views per post (only videos/reels have a daily series). Range capped at 90 days by Graph. */
+/**
+ * Daily video views + revenue for each post, from `days` ago (or the post's creation, whichever is later)
+ * until today. Graph caps a range at ~90 days, so long histories are fetched in 90-day windows.
+ */
 export async function fetchPostDaily(posts: PostInfo[], token: string, days = 30) {
   const until = new Date();
   until.setUTCDate(until.getUTCDate() + 1);
-  const urls: string[] = [];
-  const targets: PostInfo[] = [];
+  const floor = until.getTime() - days * 86400000;
+  const jobs: { post: PostInfo; url: string }[] = [];
   for (const p of posts) {
-    if (!p.videoId) continue;
-    const created = new Date(p.createdTime);
-    const since = new Date(Math.max(created.getTime() - 86400000, until.getTime() - Math.min(days, 90) * 86400000));
-    targets.push(p);
-    urls.push(`${p.id}/insights?metric=post_video_views&period=day&since=${unix(since)}&until=${unix(until)}`);
+    let start = Math.max(new Date(p.createdTime).getTime() - 86400000, floor);
+    while (start < until.getTime()) {
+      const stop = Math.min(start + 90 * 86400000, until.getTime());
+      jobs.push({
+        post: p,
+        url: `${p.id}/insights?metric=post_video_views,content_monetization_earnings&period=day&since=${unix(new Date(start))}&until=${unix(new Date(stop))}`,
+      });
+      start = stop;
+    }
   }
-  const res = await batch(urls, token);
-  const out: Record<string, Record<string, number>> = {};
-  targets.forEach((p, i) => {
+  const res = await batch(
+    jobs.map((j) => j.url),
+    token,
+  );
+  const out: Record<string, Record<string, PostDay>> = {};
+  jobs.forEach(({ post }, i) => {
     const r = res[i];
     if (r instanceof FbError) return;
-    const series = r.data?.find((m: any) => m.name === "post_video_views" && m.period === "day");
-    if (!series) return;
-    const byDay: Record<string, number> = {};
-    for (const v of series.values) if (v.end_time) byDay[dayOf(v.end_time)] = Number(v.value) || 0;
-    out[p.id] = byDay;
+    const byDay = (out[post.id] ??= {});
+    for (const m of r.data ?? []) {
+      if (m.period !== "day") continue;
+      for (const v of m.values) {
+        if (!v.end_time) continue;
+        const day = dayOf(v.end_time);
+        const d = (byDay[day] ??= { v: 0, r: 0 });
+        if (m.name === "post_video_views") d.v = Number(v.value) || 0;
+        if (m.name === "content_monetization_earnings") d.r = usd(v.value);
+      }
+    }
   });
   return out;
 }
@@ -268,6 +334,21 @@ export async function fetchPageDaily(pageId: string, token: string, days = 30) {
         if (new Date(v.end_time).getTime() - 86400000 > Date.now()) continue;
         (out[day] ??= {})[key] = Number(v.value) || 0;
       }
+    }
+    try {
+      const e: any = await graph(`${pageId}/insights`, token, {
+        metric: "monetization_approximate_earnings",
+        period: "day",
+        since: unix(since),
+        until: unix(end),
+      });
+      for (const m of e.data ?? [])
+        for (const v of m.values) {
+          if (!v.end_time || new Date(v.end_time).getTime() - 86400000 > Date.now()) continue;
+          (out[dayOf(v.end_time)] ??= {}).revenue = usd(v.value);
+        }
+    } catch {
+      // page not monetized / no monetization access — leave revenue empty
     }
     end.setTime(since.getTime());
   }

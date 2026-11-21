@@ -12,7 +12,7 @@ export type PostInfo = {
   message: string;
   permalink: string;
   statusType: string;
-  type: "reel" | "video" | "photo" | "text" | "other";
+  type: "reel" | "video" | "photo" | "text" | "link" | "story" | "other";
   videoId?: string;
   picture?: string;
   length?: number; // seconds
@@ -31,6 +31,7 @@ export type Metrics = {
   followersGained: number; // post_video_followers
   avgWatchMs: number;
   viewTimeMs: number;
+  revenue: number; // content_monetization_earnings, USD
 };
 
 export const METRIC_KEYS: (keyof Metrics)[] = [
@@ -45,6 +46,7 @@ export const METRIC_KEYS: (keyof Metrics)[] = [
   "followersGained",
   "avgWatchMs",
   "viewTimeMs",
+  "revenue",
 ];
 
 export const METRIC_LABELS: Record<keyof Metrics, string> = {
@@ -59,6 +61,7 @@ export const METRIC_LABELS: Record<keyof Metrics, string> = {
   followersGained: "ผู้ติดตามจากโพสต์",
   avgWatchMs: "ดูเฉลี่ย (ms)",
   viewTimeMs: "เวลาดูรวม (ms)",
+  revenue: "รายได้ (USD)",
 };
 
 export type SyncRun = {
@@ -66,6 +69,10 @@ export type SyncRun = {
   at: number;
   source: "api" | "csv" | "cron";
   postCount: number;
+  /** posts whose metrics were re-fetched in this run (incremental sync) */
+  refreshed?: number;
+  dailyDays?: number;
+  full?: boolean;
   error?: string;
 };
 
@@ -76,6 +83,7 @@ export type PageDay = {
   reach?: number;
   engagements?: number;
   videoViews?: number;
+  revenue?: number; // USD
 };
 
 export const emptyMetrics = (): Metrics => ({
@@ -90,4 +98,8 @@ export const emptyMetrics = (): Metrics => ({
   followersGained: 0,
   avgWatchMs: 0,
   viewTimeMs: 0,
+  revenue: 0,
 });
+
+/** One day of a post: video views (>=3s) and revenue (USD) earned that day. */
+export type PostDay = { v: number; r: number };

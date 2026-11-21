@@ -1,0 +1,8 @@
+{
+  "database": { "rules": "database.rules.json" },
+  "hosting": {
+    "source": ".",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**", "service-account.json"],
+    "frameworksBackend": { "region": "asia-southeast1", "timeoutSeconds": 540, "memory": "1GiB", "maxInstances": 3 }
+  }
+}

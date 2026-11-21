@@ -1,0 +1,19 @@
+{
+  "name": "dashboard-reels",
+  "private": true,
+  "dependencies": {
+    "firebase": "^12.3.0",
+    "firebase-admin": "^13.5.0",
+    "next": "^15.5.29",
+    "papaparse": "^5.5.3",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "recharts": "^3.2.1",
+    "firebase-frameworks": "^0.11.0",
+    "firebase-functions": "^6.0.1"
+  },
+  "main": "server.js",
+  "engines": {
+    "node": "22"
+  }
+}

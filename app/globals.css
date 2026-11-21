@@ -1,0 +1,182 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Design tokens
+   Primary = gold (Monday). Red is used only for "went down" indicators.
+   Light is default; dark via [data-theme="dark"].
+   ============================================================ */
+@theme {
+  /* surfaces */
+  --color-bg: #f7f7f4;
+  --color-surface: #ffffff;
+  --color-subtle: #f4f4f0;
+  --color-hover: #f1f1ec;
+  --color-line: #e8e7e1;
+  --color-line-strong: #d9d7cf;
+  /* text */
+  --color-text: #17171a;
+  --color-muted: #5f5f68;
+  --color-faint: #8b8b94;
+  /* brand */
+  --color-primary: #f2c230;
+  --color-primary-hover: #e8b519;
+  --color-primary-ink: #1d1604; /* text on primary */
+  --color-primary-text: #8a6200; /* primary used as text/icons on surface */
+  --color-primary-soft: #fdf5d6;
+  /* semantic */
+  --color-up: #15803d;
+  --color-up-soft: #e8f6ec;
+  --color-down: #dc2626;
+  --color-down-soft: #fdecec;
+  /* chart series */
+  --color-c1: #d9a400;
+  --color-c2: #0ea5e9;
+  --color-c3: #6366f1;
+  --color-c4: #65a30d;
+  --color-c5: #16a34a;
+  --color-c6: #a855f7;
+
+  --radius-card: 14px;
+  --shadow-card: 0 1px 2px rgba(23, 23, 26, 0.04), 0 1px 1px rgba(23, 23, 26, 0.02);
+  --shadow-pop: 0 12px 32px -8px rgba(23, 23, 26, 0.18), 0 2px 6px rgba(23, 23, 26, 0.06);
+
+  --font-sans: var(--font-plex), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-num: var(--font-inter), var(--font-plex), ui-sans-serif, system-ui, sans-serif;
+}
+
+:root[data-theme="dark"] {
+  --color-bg: #0b0c0f;
+  --color-surface: #131418;
+  --color-subtle: #191b20;
+  --color-hover: #1d1f25;
+  --color-line: #24262d;
+  --color-line-strong: #31343c;
+  --color-text: #ececee;
+  --color-muted: #a0a0aa;
+  --color-faint: #7a7a85;
+  --color-primary: #f2c230;
+  --color-primary-hover: #f6cf55;
+  --color-primary-ink: #1d1604;
+  --color-primary-text: #f2c230;
+  --color-primary-soft: rgba(242, 194, 48, 0.12);
+  --color-up: #4ade80;
+  --color-up-soft: rgba(74, 222, 128, 0.1);
+  --color-down: #f87171;
+  --color-down-soft: rgba(248, 113, 113, 0.12);
+  --color-c1: #f2c230;
+  --color-c2: #38bdf8;
+  --color-c3: #818cf8;
+  --color-c4: #a3e635;
+  --color-c5: #4ade80;
+  --color-c6: #c084fc;
+  --shadow-card: 0 0 0 1px rgba(255, 255, 255, 0.02);
+  --shadow-pop: 0 16px 40px -8px rgba(0, 0, 0, 0.6);
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  word-break: keep-all; /* don't split Thai words mid-word */
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-primary) 40%, transparent);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+
+:root[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.75);
+}
+
+@utility num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer components {
+  .card {
+    @apply border border-line bg-surface;
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+  }
+  .card-header {
+    @apply flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3.5;
+  }
+  .card-title {
+    @apply text-[15px] font-semibold text-text;
+  }
+  .btn {
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-[10px] border border-line bg-surface px-3 text-sm font-medium text-text transition-colors duration-150 hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-icon {
+    @apply w-9 px-0;
+  }
+  .btn-primary {
+    @apply border-transparent bg-primary text-primary-ink hover:bg-primary-hover;
+  }
+  .btn-ghost {
+    @apply border-transparent bg-transparent text-muted hover:bg-hover hover:text-text;
+  }
+  .seg {
+    @apply inline-flex items-center gap-0.5 rounded-[10px] border border-line bg-subtle p-0.5;
+  }
+  .seg > button {
+    @apply h-8 shrink-0 rounded-lg px-3 text-[13px] font-medium whitespace-nowrap text-muted transition-colors duration-150 hover:text-text;
+  }
+  .seg > button[data-active="true"] {
+    @apply bg-surface text-text shadow-[0_1px_2px_rgba(0,0,0,0.08)];
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium whitespace-nowrap;
+  }
+  .input {
+    @apply h-9 rounded-[10px] border border-line bg-surface px-3 text-sm text-text outline-none transition placeholder:text-faint focus:border-primary focus:ring-3 focus:ring-primary/25;
+  }
+  .label {
+    @apply text-xs font-medium text-muted;
+  }
+  .skeleton {
+    @apply animate-pulse rounded-md bg-subtle;
+  }
+  .menu {
+    @apply absolute z-50 mt-2 min-w-[220px] overflow-hidden rounded-xl border border-line bg-surface p-1 shadow-[var(--shadow-pop)];
+  }
+  .menu-item {
+    @apply flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-text transition-colors hover:bg-hover;
+  }
+}
+
+/* Everything interactive shows a pointer (Tailwind v4 preflight resets buttons to default). */
+@layer base {
+  button:not(:disabled),
+  [role="button"],
+  a[href],
+  select:not(:disabled),
+  summary,
+  label[for],
+  input[type="date"],
+  input[type="checkbox"],
+  .clickable {
+    cursor: pointer;
+  }
+  button:disabled,
+  select:disabled,
+  input:disabled {
+    cursor: not-allowed;
+  }
+}

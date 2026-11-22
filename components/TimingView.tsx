@@ -8,7 +8,7 @@ import { computeWindow, useRangeParam, WEEKDAY_LABELS } from "@/lib/range";
 import type { PostInfo } from "@/lib/types";
 import { Drawer } from "./Drawer";
 import { Thumb, useSecret } from "./Secret";
-import { EmptyState, InfoTip, RangePicker, TypeBadge, WeekdayFilter } from "./ui";
+import { EmptyState, InfoTip, RangePicker, ThaiTime, TypeBadge, WeekdayFilter } from "./ui";
 
 type Metric = "views" | "revenue" | "followers";
 type Stat = "median" | "mean";
@@ -101,7 +101,7 @@ export function TimingView({ b }: { b: PageBundle }) {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">เวลาโพสต์</h1>
           <p className="mt-1 text-sm text-muted">
-            โพสต์ช่วงไหนได้ผลดี · โพสต์ระหว่าง {thDay(win.from)} – {thDay(win.to)} · เวลาไทย
+            โพสต์ช่วงไหนได้ผลดี · โพสต์ระหว่าง {thDay(win.from)} – {thDay(win.to)} · <b className="font-medium text-text">เวลาโพสต์ทั้งหมดเป็นเวลาไทย</b>
           </p>
         </div>
         <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
@@ -161,7 +161,7 @@ export function TimingView({ b }: { b: PageBundle }) {
           <section className="card">
             <div className="card-header">
               <div>
-                <div className="card-title">วัน × ชั่วโมงที่โพสต์</div>
+                <div className="card-title flex items-center gap-2">วัน × ชั่วโมงที่โพสต์ <ThaiTime /></div>
                 <div className="mt-0.5 text-xs text-muted">{statLabel}{metricLabel}ต่อโพสต์ · กดช่องเพื่อดูโพสต์ในช่วงนั้น</div>
               </div>
               <div className="flex items-center gap-2 text-xs text-muted">
@@ -406,7 +406,7 @@ function PostingLog({ b, from, to, lastDay, allow, metric, windowDays, typeFilte
     <section className="card">
       <div className="card-header">
         <div className="min-w-0">
-          <div className="card-title">บันทึกการโพสต์รายวัน</div>
+          <div className="card-title flex items-center gap-2">บันทึกการโพสต์รายวัน <ThaiTime /></div>
           <div className="mt-0.5 text-xs text-muted">{num(posts.length)} โพสต์ · เทียบกับปกติ (มัธยฐาน {fmt(med)}) · {metricLabel}</div>
         </div>
         <div className="flex items-center gap-2">

@@ -7,7 +7,7 @@ import { computeWindow, useRangeParam } from "@/lib/range";
 import { DailyChart, Legend } from "./DailyChart";
 import { maskPage, useSecret } from "./Secret";
 import { Sparkline } from "./Sparkline";
-import { Dash, EmptyState, InfoTip, RangePicker, SortHeader } from "./ui";
+import { Dash, EmptyState, InfoTip, MetaDay, RangePicker, SortHeader } from "./ui";
 
 type Mode = "country" | "province";
 type Row = { key: string; label: string; icon?: string; total: number; base: number; change: number; share: number; series: number[] };
@@ -134,7 +134,7 @@ export function AudienceView({ data, pageName, pageIndex }: { data: Record<strin
       <section className="card">
         <div className="card-header">
           <div className="min-w-0">
-            <div className="card-title truncate">แนวโน้ม · {sel ? `${sel.icon ?? ""} ${sel.label}` : "–"}</div>
+            <div className="card-title flex items-center gap-2 truncate"><MetaDay />แนวโน้ม · {sel ? `${sel.icon ?? ""} ${sel.label}` : "–"}</div>
             <div className="mt-1"><Legend items={[{ label: "ผู้ติดตามใหม่ต่อวัน", color: "var(--color-c4)" }, { label: "ยอดสะสม", color: "var(--color-c1)" }]} /></div>
           </div>
           <span className="text-xs text-muted">กดแถวในตารางเพื่อดูประเทศ/จังหวัดอื่น</span>

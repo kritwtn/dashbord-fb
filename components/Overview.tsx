@@ -12,7 +12,7 @@ import { DatePicker } from "./DatePicker";
 import { Drawer } from "./Drawer";
 import { maskPage, Thumb, useSecret } from "./Secret";
 import { Sparkline } from "./Sparkline";
-import { Dash, EmptyState, Growth, InfoTip, RangePicker, TypeBadge, WeekdayFilter } from "./ui";
+import { Dash, EmptyState, Growth, InfoTip, MetaDay, RangePicker, TypeBadge, WeekdayFilter } from "./ui";
 
 type KpiDef = { key: keyof PageDay; label: string; color: string; icon: typeof Eye; money?: boolean; help: string };
 const KPIS: KpiDef[] = [
@@ -68,6 +68,7 @@ export function Overview({ b, pageIndex }: { b: PageBundle; pageIndex: number })
             <span className="mx-2 text-line-strong">|</span>
             <span className="whitespace-nowrap">{thDay(win.from)}{win.from !== win.to ? ` – ${thDay(win.to)}` : ""}</span>
             {win.prevFrom && <span className="whitespace-nowrap text-faint"> · เทียบ {thDay(win.prevFrom)}{win.prevFrom !== win.prevTo ? ` – ${thDay(win.prevTo)}` : ""}</span>}
+                      <MetaDay className="ml-2 align-middle" />
           </p>
         </div>
         <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
@@ -108,7 +109,7 @@ export function Overview({ b, pageIndex }: { b: PageBundle; pageIndex: number })
       <section className="card">
         <div className="card-header">
           <div className="min-w-0">
-            <div className="card-title">แนวโน้มรายวัน</div>
+            <div className="card-title flex items-center gap-2">แนวโน้มรายวัน <MetaDay /></div>
             <div className="mt-1"><Legend items={[{ label: cm.label, color: cm.color }, ...(ghost ? [{ label: "ช่วงก่อนหน้า", color: "var(--color-faint)", dashed: true }] : [])]} /></div>
           </div>
           <div className="flex min-w-0 max-w-full items-center gap-2">
@@ -137,7 +138,7 @@ export function Overview({ b, pageIndex }: { b: PageBundle; pageIndex: number })
       <section className="card">
         <div className="card-header">
           <div>
-            <div className="card-title">โพสต์ที่ทำผลงานดีที่สุด</div>
+            <div className="card-title flex items-center gap-2">โพสต์ที่ทำผลงานดีที่สุด <MetaDay /></div>
             <div className="mt-0.5 text-xs text-muted">ในช่วง {thDay(win.from)}{win.from !== win.to ? ` – ${thDay(win.to)}` : ""}{topBy === "engagement" ? " · การมีส่วนร่วมเป็นยอดสะสม" : ""}</div>
           </div>
           <div className="flex items-center gap-2">
@@ -235,7 +236,7 @@ function DailySummary({ b, firstDay, lastDay, title }: { b: PageBundle; firstDay
       <div className="card flex min-w-0 flex-col">
         <div className="card-header">
           <div className="flex items-center gap-2">
-            <span className="card-title">สรุปประจำวัน</span>
+            <span className="card-title flex items-center gap-2">สรุปประจำวัน <MetaDay /></span>
             {day === lastDay && <span className="badge bg-primary-soft text-primary-text">วันนี้ · ยังไม่จบวัน</span>}
           </div>
           <div className="flex items-center gap-1">
@@ -288,7 +289,7 @@ function DailySummary({ b, firstDay, lastDay, title }: { b: PageBundle; firstDay
 
       <div className="card flex min-w-0 flex-col">
         <div className="card-header">
-          <span className="card-title">ยอดนิยมของวัน · Top 10 <span className="ml-1 text-sm font-normal text-muted">{thDay(day)}</span></span>
+          <span className="card-title flex flex-wrap items-center gap-2">ยอดนิยมของวัน · Top 10 <span className="text-sm font-normal text-muted">{thDay(day)}</span><MetaDay /></span>
           <div className="seg">
             <button data-active={by === "v"} onClick={() => setBy("v")}>วิว</button>
             <button data-active={by === "r"} onClick={() => setBy("r")}>รายได้</button>
@@ -389,7 +390,7 @@ function Breakdown({ stat, onClose, b, day, prevDay, title, follow }: {
     <Drawer open onClose={() => { setShowAll(false); onClose(); }}
       icon={<span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: `color-mix(in srgb, ${stat.color} 15%, transparent)`, color: stat.color }}><stat.icon size={18} /></span>}
       title={`${stat.label} มาจากคลิปไหนบ้าง`}
-      subtitle={`${thDay(day)} · เทียบ ${thDay(prevDay)}`}
+      subtitle={`${thDay(day)} · เทียบ ${thDay(prevDay)} · วันของ Meta (15:00–15:00 เวลาไทย)`}
       footer={BASIS[stat.kind]}>
       {/* hero */}
       <div className="px-5 pb-4 pt-5">

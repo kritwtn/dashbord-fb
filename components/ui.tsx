@@ -162,3 +162,16 @@ export function WeekdayFilter({ mask, onChange }: { mask: string; onChange: (m: 
     </div>
   );
 }
+
+/** Marks a time shown in Thai time (Asia/Bangkok). */
+export const ThaiTime = ({ className = "" }: { className?: string }) => (
+  <span className={`badge bg-subtle text-muted ${className}`} title="เวลาประเทศไทย (UTC+7)">เวลาไทย</span>
+);
+
+/** Marks numbers bucketed by Meta's day (Pacific time) = 15:00–15:00 Thai time. */
+export const MetaDay = ({ className = "" }: { className?: string }) => (
+  <span className={`badge inline-flex items-center gap-1 bg-primary-soft text-primary-text ${className}`}>
+    วันของ Meta
+    <InfoTip text="ตัวเลขรายวันจาก Meta นับวันตามเวลาแปซิฟิก: 1 วัน = 15:00 ถึง 15:00 ของวันถัดไป (เวลาไทย) หรือ 14:00 ช่วงเวลาออมแสงของสหรัฐฯ — โพสต์ที่ลงก่อน 15:00 จะถูกนับในวันก่อนหน้า" side="bottom" align="center" />
+  </span>
+);

@@ -4,7 +4,7 @@ import { ageLabel, daysBetween, metaDayInBkk, num, thDate, thDay, usd } from "@/
 import type { Metrics, PostDay, PostInfo, SyncRun } from "@/lib/types";
 import { DailyChart, Legend } from "./DailyChart";
 import { maskPage, Thumb, useSecret } from "./Secret";
-import { Dash, EmptyState, TypeBadge } from "./ui";
+import { Dash, EmptyState, MetaDay, ThaiTime, TypeBadge } from "./ui";
 
 const SECONDARY: { k: keyof Metrics; label: string }[] = [
   { k: "reach", label: "ผู้ชม" },
@@ -59,7 +59,7 @@ export function PostDetail(props: {
         <div className="min-w-0 flex-1 space-y-3">
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
             <TypeBadge type={post.type} />
-            <span>{thDate(post.createdTime)}</span>
+            <span>โพสต์ {thDate(post.createdTime)}</span><ThaiTime />
             {post.length ? <span className="num">· {post.length} วินาที</span> : null}
             <span>· โพสต์ {ageLabel(post.createdTime)}ที่แล้ว</span>
           </div>
@@ -103,7 +103,7 @@ export function PostDetail(props: {
       <section className="card">
         <div className="card-header">
           <div>
-            <div className="card-title">วิวและรายได้รายวัน</div>
+            <div className="card-title flex items-center gap-2">วิวและรายได้รายวัน <MetaDay /></div>
             {enoughForChart && <div className="mt-1"><Legend items={[{ label: "วิว (3 วินาที)", color: "var(--color-c1)" }, { label: "รายได้", color: "var(--color-c5)" }]} /></div>}
           </div>
         </div>
@@ -153,7 +153,7 @@ export function PostDetail(props: {
             <table className="w-full text-sm">
               <thead className="bg-subtle text-xs text-muted">
                 <tr>
-                  <th className="px-5 py-2.5 text-left font-medium">รอบ sync</th>
+                  <th className="px-5 py-2.5 text-left font-medium">รอบ sync (เวลาไทย)</th>
                   {HISTORY.map((h) => <th key={h.k} className="whitespace-nowrap px-4 py-2.5 text-right font-medium">{h.label}</th>)}
                 </tr>
               </thead>

@@ -152,7 +152,7 @@ export function AppShell({ pages, pageId, email, syncs, children }: Props) {
 
       <div className={`flex items-center gap-2 border-t border-line p-3 ${mini ? "flex-col" : ""}`}>
         <div className={`flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-xs text-muted ${mini ? "justify-center" : ""}`}
-          title={last ? `sync ล่าสุด ${thDate(new Date(last.at).toISOString())}` : "ยังไม่เคย sync"}>
+          title={last ? `sync ล่าสุด ${thDate(new Date(last.at).toISOString())} (เวลาไทย)` : "ยังไม่เคย sync"}>
           <span className={`h-2 w-2 shrink-0 rounded-full ${stale ? "bg-primary" : "bg-up"}`} />
           {!mini && <span className="truncate">{last ? <>sync ล่าสุด {thDate(new Date(last.at).toISOString())}</> : "ยังไม่เคย sync"}</span>}
         </div>
@@ -206,7 +206,7 @@ export function AppShell({ pages, pageId, email, syncs, children }: Props) {
               </button>
               {bell && (
                 <div className="menu right-0 w-80">
-                  <div className="px-2.5 pb-1 pt-1.5 text-xs font-semibold text-muted">ประวัติการ sync</div>
+                  <div className="px-2.5 pb-1 pt-1.5 text-xs font-semibold text-muted">ประวัติการ sync · เวลาไทย</div>
                   {stale && (
                     <div className="mx-1 mb-1 rounded-lg bg-primary-soft px-2.5 py-2 text-xs text-text">
                       ข้อมูลเก่ากว่า 1 วัน — กด Sync เพื่ออัปเดต

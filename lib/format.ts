@@ -12,8 +12,9 @@ export const pct = (cur: number, prev: number) => {
   return ((cur - prev) / prev) * 100;
 };
 
+/** Date + time in Thai time, e.g. "22 พ.ย. 12:15 น." */
 export const thDate = (iso: string) =>
-  new Date(iso).toLocaleString("th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  new Date(iso).toLocaleString("th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) + " น.";
 
 export const thDay = (day: string) =>
   new Date(day + "T00:00:00Z").toLocaleDateString("th-TH", { timeZone: "UTC", day: "numeric", month: "short" });

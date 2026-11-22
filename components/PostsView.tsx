@@ -9,7 +9,7 @@ import { computeWindow, useRangeParam } from "@/lib/range";
 import { Thumb, useSecret } from "./Secret";
 import { progress } from "./TopProgress";
 import { Sparkline } from "./Sparkline";
-import { Dash, EmptyState, Growth, RangePicker, SortHeader, TypeBadge, WeekdayFilter } from "./ui";
+import { Dash, EmptyState, Growth, MetaDay, RangePicker, SortHeader, TypeBadge, WeekdayFilter } from "./ui";
 
 type SortKey = "title" | "type" | "created" | "views" | "growth" | "revenue" | "totalViews" | "delta"
   | "reactions" | "comments" | "shares" | "followers" | "totalRevenue";
@@ -123,6 +123,7 @@ export function PostsView({ b }: { b: PageBundle }) {
           <p className="mt-1 text-sm text-muted">
             {thDay(win.from)}{win.from !== win.to ? ` – ${thDay(win.to)}` : ""} · รวม <b className="num font-semibold text-text">{num(totals.v)}</b> วิว
             · <b className="num font-semibold text-up">{usd(totals.r)}</b>
+           <MetaDay className="ml-1 align-middle" />
           </p>
         </div>
         <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
@@ -191,7 +192,7 @@ export function PostsView({ b }: { b: PageBundle }) {
                     <th className="w-12 px-4 py-3 text-left font-medium">#</th>
                     <th className="sticky left-0 z-10 min-w-[280px] bg-subtle px-3 py-3 text-left font-medium">{th("title", "โพสต์", "left")}</th>
                     <th className="px-3 py-3 text-left font-medium">{th("type", "ประเภท", "left")}</th>
-                    <th className="px-3 py-3 text-left font-medium">{th("created", "วันที่โพสต์", "left")}</th>
+                    <th className="px-3 py-3 text-left font-medium">{th("created", "วันที่โพสต์ (เวลาไทย)", "left")}</th>
                     <th className="px-3 py-3 text-left font-medium">14 วันล่าสุด</th>
                     {cols.map((c) => <th key={c.k} className="px-3 py-3 text-right font-medium">{th(c.k, c.label)}</th>)}
                   </tr>

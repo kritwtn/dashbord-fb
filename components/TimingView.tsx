@@ -133,6 +133,9 @@ export function TimingView({ b }: { b: PageBundle }) {
         </select>
       </div>
 
+      <PostingLog b={b} from={win.from} to={win.to} lastDay={lastDay} allow={range.allow} metric={metric} windowDays={windowDays}
+        typeFilter={type} median={median(perf.map((x) => x.value))} fmt={fmt} metricLabel={metricLabel} title={title} />
+
       {perf.length < 3 ? (
         <div className="card"><EmptyState title="โพสต์ในช่วงนี้ยังน้อยเกินไป" hint={`ต้องมีโพสต์ที่อายุครบ ${windowDays} วันอย่างน้อย 3 โพสต์ ลองเลือกช่วง "ทั้งหมด" หรือ 1 วันแรก`} /></div>
       ) : (
@@ -292,5 +295,194 @@ function Bars({ values, counts, labels, best, fmt, onPick }: {
         ))}
       </div>
     </div>
+  );
+}
+
+/* ---------------- Daily posting log (calendar / list) ---------------- */
+
+type LogPost = { key: string; p: PostInfo; date: string; time: string; value: number; views: number; rev: number; complete: boolean; ageDays: number };
+type Rating = { label: string; cls: string; dot: string };
+const RATINGS = {
+  great: { label: "ดีมาก", cls: "bg-up text-white", dot: "bg-up" },
+  good: { label: "ดี", cls: "bg-up-soft text-up", dot: "bg-up/60" },
+  normal: { label: "ปกติ", cls: "bg-subtle text-muted", dot: "bg-faint/50" },
+  low: { label: "ต่ำ", cls: "bg-down-soft text-down", dot: "bg-down" },
+  pending: { label: "ยังไม่ครบ", cls: "bg-primary-soft text-primary-text", dot: "bg-primary" },
+} satisfies Record<string, Rating>;
+const TH_MONTHS = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+
+/** Bangkok calendar date + HH:mm of a post. */
+function bkk(iso: string) {
+  const d = new Date(new Date(iso).getTime() + 7 * 3600 * 1000).toISOString();
+  return { date: d.slice(0, 10), time: d.slice(11, 16) };
+}
+
+function PostingLog({ b, from, to, lastDay, allow, metric, windowDays, typeFilter, median: med, fmt, metricLabel, title }: {
+  b: PageBundle; from: string; to: string; lastDay: string; allow?: (d: string) => boolean; metric: Metric; windowDays: number;
+  typeFilter: string; median: number; fmt: (n: number) => string; metricLabel: string; title: (k: string, p: PostInfo) => string;
+}) {
+  const [view, setView] = useState<"calendar" | "list">("calendar");
+  const [openDay, setOpenDay] = useState<string | null>(null);
+
+  const posts: LogPost[] = useMemo(() => {
+    const out: LogPost[] = [];
+    for (const [key, p] of Object.entries(b.posts)) {
+      if (p.type === "story" || (typeFilter !== "all" && p.type !== typeFilter)) continue;
+      const { date, time } = bkk(p.createdTime);
+      if (date < from || date > addDays(to, 1)) continue;
+      if (allow && !allow(date)) continue;
+      const day0 = metaDay(p.createdTime);
+      const end = addDays(day0, windowDays - 1);
+      let v = 0, r = 0;
+      for (let d = day0; d <= end && d <= lastDay; d = addDays(d, 1)) {
+        v += b.postDaily[key]?.[d]?.v ?? 0;
+        r += b.postDaily[key]?.[d]?.r ?? 0;
+      }
+      const ageDays = Math.max(0, Math.round((new Date(lastDay).getTime() - new Date(day0).getTime()) / 86400000));
+      const value = metric === "views" ? v : metric === "revenue" ? r : b.latest[key]?.followersGained ?? 0;
+      out.push({ key, p, date, time, value, views: v, rev: r, complete: metric === "followers" || end < lastDay, ageDays });
+    }
+    return out.sort((a, c) => (a.date + a.time < c.date + c.time ? 1 : -1));
+  }, [b, from, to, lastDay, allow, metric, windowDays, typeFilter]);
+
+  const rate = (x: LogPost): Rating => {
+    if (!x.complete) return RATINGS.pending;
+    if (!med) return RATINGS.normal;
+    const k = x.value / med;
+    return k >= 2 ? RATINGS.great : k >= 1.2 ? RATINGS.good : k >= 0.8 ? RATINGS.normal : RATINGS.low;
+  };
+  const byDate = useMemo(() => {
+    const m = new Map<string, LogPost[]>();
+    for (const x of posts) m.set(x.date, [...(m.get(x.date) ?? []), x]);
+    for (const list of m.values()) list.sort((a, c) => a.time.localeCompare(c.time));
+    return m;
+  }, [posts]);
+
+  // calendar month navigation (defaults to the month of the newest post in range)
+  const newest = posts[0]?.date ?? to;
+  const [month, setMonth] = useState(newest.slice(0, 7));
+  const [y, m] = month.split("-").map(Number);
+  const firstDow = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7;
+  const daysIn = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const cells: (string | null)[] = [...Array(firstDow).fill(null), ...Array.from({ length: daysIn }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`)];
+  while (cells.length % 7) cells.push(null);
+  const shiftMonth = (n: number) => {
+    const d = new Date(Date.UTC(y, m - 1 + n, 1));
+    setMonth(d.toISOString().slice(0, 7));
+  };
+  const minMonth = (posts.at(-1)?.date ?? from).slice(0, 7);
+  const maxMonth = newest.slice(0, 7);
+  const dayPosts = openDay ? byDate.get(openDay) ?? [] : [];
+  const dayLabel = (d: string) => {
+    const [yy, mm, dd] = d.split("-").map(Number);
+    const wd = (new Date(Date.UTC(yy, mm - 1, dd)).getUTCDay() + 6) % 7;
+    return `วัน${DAY_NAMES[wd]} ${dd} ${TH_MONTHS[mm - 1]} ${yy + 543}`;
+  };
+  const Badge = ({ x }: { x: LogPost }) => {
+    const r = rate(x);
+    return <span className={`badge ${r.cls}`}>{r === RATINGS.pending ? `ยังไม่ครบ ${windowDays} วัน` : r.label}</span>;
+  };
+
+  const PostRow = ({ x }: { x: LogPost }) => (
+    <Link href={`/p/${b.page.id}/post/${x.key}`} onClick={() => setOpenDay(null)}
+      className="group flex items-center gap-3 px-5 py-3 transition-colors hover:bg-hover">
+      <span className="num w-12 shrink-0 text-sm font-semibold">{x.time}</span>
+      <Thumb src={x.p.picture} type={x.p.type} size={44} />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13px] font-medium group-hover:text-primary-text">{title(x.key, x.p)}</div>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+          <Badge x={x} /><TypeBadge type={x.p.type} />
+          {x.rev >= 0.005 && <span className="num text-up">{usd(x.rev)}</span>}
+        </div>
+      </div>
+      <div className="w-20 shrink-0 text-right">
+        <div className="num text-sm font-semibold">{fmt(x.value)}</div>
+        <div className="text-[11px] text-muted">{med && x.complete ? `${(x.value / med).toFixed(1)}× ปกติ` : metric === "views" ? `${Math.min(windowDays, x.ageDays + 1)} วัน` : ""}</div>
+      </div>
+    </Link>
+  );
+
+  return (
+    <section className="card">
+      <div className="card-header">
+        <div className="min-w-0">
+          <div className="card-title">บันทึกการโพสต์รายวัน</div>
+          <div className="mt-0.5 text-xs text-muted">{num(posts.length)} โพสต์ · เทียบกับปกติ (มัธยฐาน {fmt(med)}) · {metricLabel}</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="hidden items-center gap-2 text-[11px] text-muted md:flex">
+            {[RATINGS.great, RATINGS.good, RATINGS.normal, RATINGS.low].map((r) => (
+              <span key={r.label} className="inline-flex items-center gap-1"><span className={`h-2 w-2 rounded-full ${r.dot}`} />{r.label}</span>
+            ))}
+          </div>
+          <div className="seg">
+            <button data-active={view === "calendar"} onClick={() => setView("calendar")}>ปฏิทิน</button>
+            <button data-active={view === "list"} onClick={() => setView("list")}>รายการ</button>
+          </div>
+        </div>
+      </div>
+
+      {!posts.length ? (
+        <EmptyState title="ไม่มีโพสต์ในช่วงนี้" hint="ลองเลือกช่วง &quot;ทั้งหมด&quot; หรือเปลี่ยนตัวกรองวัน/ประเภท" />
+      ) : view === "calendar" ? (
+        <div className="p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <button className="btn btn-icon h-8 w-8" disabled={month <= minMonth} onClick={() => shiftMonth(-1)} aria-label="เดือนก่อน">‹</button>
+            <div className="text-sm font-semibold">{TH_MONTHS[m - 1]} <span className="num">{y + 543}</span></div>
+            <button className="btn btn-icon h-8 w-8" disabled={month >= maxMonth} onClick={() => shiftMonth(1)} aria-label="เดือนถัดไป">›</button>
+          </div>
+          <div className="grid grid-cols-7 gap-1.5">
+            {WEEKDAY_LABELS.map((l) => <div key={l} className="pb-1 text-center text-[11px] font-medium text-muted">{l}</div>)}
+            {cells.map((d, i) => {
+              if (!d) return <div key={i} />;
+              const list = byDate.get(d) ?? [];
+              const dimmed = (allow && !allow(d)) || d < from || d > to;
+              const top = list.length ? Math.max(...list.map((x) => x.value)) : 0;
+              return (
+                <button key={d} onClick={() => list.length && setOpenDay(d)} disabled={!list.length}
+                  className={`flex min-h-[92px] flex-col rounded-xl border p-1.5 text-left transition sm:p-2 ${
+                    list.length ? "border-line bg-surface hover:-translate-y-0.5 hover:border-line-strong hover:shadow-[var(--shadow-pop)]" : "border-transparent bg-subtle/60"} ${dimmed ? "opacity-40" : ""} disabled:cursor-default`}>
+                  <div className="flex items-center justify-between">
+                    <span className={`num text-xs font-semibold ${d === lastDay ? "flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-ink" : "text-muted"}`}>{Number(d.slice(8))}</span>
+                    {list.length > 0 && <span className="num hidden text-[10px] text-muted sm:inline">{fmt(top)}</span>}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {list.slice(0, 4).map((x) => {
+                      const r = rate(x);
+                      return (
+                        <span key={x.key} title={`${x.time} · ${fmt(x.value)} · ${r.label}`}
+                          className={`num inline-flex items-center rounded-md px-1 py-0.5 text-[10px] font-semibold leading-none sm:px-1.5 ${r.cls}`}>
+                          {x.time}
+                        </span>
+                      );
+                    })}
+                    {list.length > 4 && <span className="num text-[10px] text-muted">+{list.length - 4}</span>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="max-h-[640px] overflow-y-auto">
+          {[...byDate.entries()].map(([d, list]) => (
+            <div key={d}>
+              <div className="sticky top-0 z-10 flex items-center justify-between border-y border-line bg-subtle px-5 py-2 text-xs">
+                <span className="font-semibold text-text">{dayLabel(d)}</span>
+                <span className="text-muted">{list.length} โพสต์ · ยอดดูเพจวันนั้น {compact(b.pageDaily[d]?.mediaViews ?? 0)}</span>
+              </div>
+              <div className="divide-y divide-line">{list.map((x) => <PostRow key={x.key} x={x} />)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Drawer open={!!openDay} onClose={() => setOpenDay(null)} title={openDay ? dayLabel(openDay) : ""}
+        subtitle={openDay ? `${dayPosts.length} โพสต์ · ยอดดูเพจวันนั้น ${num(b.pageDaily[openDay]?.mediaViews ?? 0)} · วิดีโอวิว ${num(b.pageDaily[openDay]?.videoViews ?? 0)}` : ""}
+        icon={<span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary-text"><CalendarDays size={18} /></span>}
+        footer={`ผลลัพธ์ = ${metricLabel} เทียบกับมัธยฐานของทุกโพสต์ในช่วงที่เลือก (${fmt(med)}) · ดีมาก ≥ 2× · ดี ≥ 1.2× · ต่ำ < 0.8×`}>
+        <div className="divide-y divide-line">{dayPosts.map((x) => <PostRow key={x.key} x={x} />)}</div>
+      </Drawer>
+    </section>
   );
 }

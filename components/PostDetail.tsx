@@ -1,6 +1,6 @@
-import { ArrowLeft, CircleDollarSign, ExternalLink, Eye, UserPlus } from "lucide-react";
+import { ArrowLeft, CalendarDays, CircleDollarSign, Clock, ExternalLink, Eye, UserPlus } from "lucide-react";
 import Link from "@/lib/nav";
-import { ageLabel, daysBetween, metaDayInBkk, num, thDate, thDay, usd } from "@/lib/format";
+import { ageLabel, daysBetween, metaDayInBkk, num, thDate, thDateParts, thDay, usd } from "@/lib/format";
 import type { Metrics, PostDay, PostInfo, SyncRun } from "@/lib/types";
 import { DailyChart, Legend } from "./DailyChart";
 import { maskPage, Thumb, useSecret } from "./Secret";
@@ -57,11 +57,27 @@ export function PostDetail(props: {
           <Thumb src={post.picture} type={post.type} size={148} contain />
         </div>
         <div className="min-w-0 flex-1 space-y-3">
+          {(() => {
+            const t = thDateParts(post.createdTime);
+            return (
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/40 bg-primary-soft px-4 py-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-ink"><CalendarDays size={20} /></span>
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-primary-text">โพสต์เมื่อ</div>
+                  <div className="text-base font-semibold leading-snug text-text sm:text-lg">
+                    {t.date} <span className="whitespace-nowrap">เวลา <span className="num">{t.time}</span></span>
+                  </div>
+                </div>
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                  <ThaiTime />
+                  <span className="badge bg-surface text-muted"><Clock size={12} />{ageLabel(post.createdTime)}ที่แล้ว</span>
+                </div>
+              </div>
+            );
+          })()}
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
             <TypeBadge type={post.type} />
-            <span>โพสต์ {thDate(post.createdTime)}</span><ThaiTime />
-            {post.length ? <span className="num">· {post.length} วินาที</span> : null}
-            <span>· โพสต์ {ageLabel(post.createdTime)}ที่แล้ว</span>
+            {post.length ? <span className="num">ความยาว {post.length} วินาที</span> : null}
           </div>
           <h1 className="sr-only">{secret ? `โพสต์ #${props.postNo}` : "รายละเอียดโพสต์"}</h1>
           <p className="whitespace-pre-wrap text-[15px] leading-relaxed">

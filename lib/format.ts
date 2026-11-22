@@ -70,3 +70,12 @@ export function ageLabel(iso: string, now = Date.now()) {
   if (h < 24) return `${Math.floor(h)} ชม.`;
   return `${Math.floor(h / 24)} วัน`;
 }
+
+/** "วันศุกร์ที่ 21 พฤศจิกายน 2569" and "12:15 น." in Thai time. */
+export function thDateParts(iso: string) {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok", weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const time = d.toLocaleTimeString("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit" }) + " น.";
+  // th-TH already renders "วันเสาร์ที่ 21 พฤศจิกายน 2569"
+  return { date, time };
+}

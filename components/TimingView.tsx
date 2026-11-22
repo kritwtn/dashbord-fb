@@ -2,7 +2,7 @@ import { CalendarDays, Clock, Sparkles, Trophy } from "lucide-react";
 import { useMemo, useState } from "react";
 import { dayBounds, postNumbers } from "@/lib/analytics";
 import type { PageBundle } from "@/lib/data";
-import { addDays, compact, metaDay, num, thDate, thDay, TYPE_LABEL, usd } from "@/lib/format";
+import { addDays, ageLabel, compact, metaDay, num, thDate, thDay, TYPE_LABEL, usd } from "@/lib/format";
 import Link from "@/lib/nav";
 import { computeWindow, useRangeParam, WEEKDAY_LABELS } from "@/lib/range";
 import type { PostInfo } from "@/lib/types";
@@ -397,7 +397,7 @@ function PostingLog({ b, from, to, lastDay, allow, metric, windowDays, typeFilte
       </div>
       <div className="w-20 shrink-0 text-right">
         <div className="num text-sm font-semibold">{fmt(x.value)}</div>
-        <div className="text-[11px] text-muted">{med && x.complete ? `${(x.value / med).toFixed(1)}× ปกติ` : metric === "views" ? `${Math.min(windowDays, x.ageDays + 1)} วัน` : ""}</div>
+        <div className="text-[11px] text-muted">{med && x.complete ? `${(x.value / med).toFixed(1)}× ปกติ` : `โพสต์ ${ageLabel(x.p.createdTime)}ที่แล้ว`}</div>
       </div>
     </Link>
   );

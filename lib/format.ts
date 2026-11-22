@@ -43,3 +43,29 @@ export const TYPE_LABEL: Record<string, string> = {
 
 /** The Meta "day" (America/Los_Angeles) an ISO timestamp falls on, as yyyy-mm-dd. */
 export const metaDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+
+/**
+ * A Meta "day" (America/Los_Angeles) expressed in Thai time: it starts at PT midnight, i.e. 15:00
+ * (or 14:00 during US daylight saving) in Bangkok, and ends 24h later.
+ */
+export function metaDayInBkk(day: string) {
+  let start = new Date(`${day}T08:00:00Z`);
+  for (const h of ["07", "08"]) {
+    const d = new Date(`${day}T${h}:00:00Z`);
+    const hr = Number(d.toLocaleString("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hourCycle: "h23" }));
+    if (hr === 0) start = d;
+  }
+  const fmt = (d: Date) => {
+    const b = new Date(d.getTime() + 7 * 3600 * 1000).toISOString();
+    return { day: b.slice(0, 10), time: b.slice(11, 16) };
+  };
+  return { start: fmt(start), end: fmt(new Date(start.getTime() + 86400000)) };
+}
+
+/** "5 ชม." / "2 วัน" since an ISO time (real elapsed time, not calendar days). */
+export function ageLabel(iso: string, now = Date.now()) {
+  const h = Math.max(0, (now - new Date(iso).getTime()) / 3600000);
+  if (h < 1) return `${Math.max(1, Math.round(h * 60))} นาที`;
+  if (h < 24) return `${Math.floor(h)} ชม.`;
+  return `${Math.floor(h / 24)} วัน`;
+}

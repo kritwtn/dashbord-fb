@@ -1,6 +1,6 @@
 import { ArrowLeft, CircleDollarSign, ExternalLink, Eye, UserPlus } from "lucide-react";
 import Link from "@/lib/nav";
-import { daysBetween, num, thDate, thDay, usd } from "@/lib/format";
+import { ageLabel, daysBetween, metaDayInBkk, num, thDate, thDay, usd } from "@/lib/format";
 import type { Metrics, PostDay, PostInfo, SyncRun } from "@/lib/types";
 import { DailyChart, Legend } from "./DailyChart";
 import { maskPage, Thumb, useSecret } from "./Secret";
@@ -61,6 +61,7 @@ export function PostDetail(props: {
             <TypeBadge type={post.type} />
             <span>{thDate(post.createdTime)}</span>
             {post.length ? <span className="num">· {post.length} วินาที</span> : null}
+            <span>· โพสต์ {ageLabel(post.createdTime)}ที่แล้ว</span>
           </div>
           <h1 className="sr-only">{secret ? `โพสต์ #${props.postNo}` : "รายละเอียดโพสต์"}</h1>
           <p className="whitespace-pre-wrap text-[15px] leading-relaxed">
@@ -123,7 +124,17 @@ export function PostDetail(props: {
               <tbody className="divide-y divide-line">
                 {[...data].reverse().map((d) => (
                   <tr key={d.day} className="transition-colors hover:bg-hover">
-                    <td className="px-5 py-2">{thDay(d.day)}</td>
+                    <td className="px-5 py-2">
+                      {(() => {
+                        const r = metaDayInBkk(d.day);
+                        return (
+                          <>
+                            <div>{thDay(d.day)}</div>
+                            <div className="num text-[11px] text-muted">{thDay(r.start.day)} {r.start.time} – {thDay(r.end.day)} {r.end.time} น.</div>
+                          </>
+                        );
+                      })()}
+                    </td>
                     <td className="num px-5 py-2 text-right font-medium">{num(d.views)}</td>
                     <td className="num px-5 py-2 text-right text-muted">{num(d.cum)}</td>
                     <td className="num px-5 py-2 text-right text-up">{d.revenue ? usd(d.revenue) : <Dash />}</td>

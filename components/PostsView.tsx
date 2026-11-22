@@ -9,7 +9,7 @@ import { computeWindow, useRangeParam } from "@/lib/range";
 import { Thumb, useSecret } from "./Secret";
 import { progress } from "./TopProgress";
 import { Sparkline } from "./Sparkline";
-import { Dash, EmptyState, Growth, RangePicker, SortHeader, TypeBadge } from "./ui";
+import { Dash, EmptyState, Growth, RangePicker, SortHeader, TypeBadge, WeekdayFilter } from "./ui";
 
 type SortKey = "title" | "type" | "created" | "views" | "growth" | "revenue" | "totalViews" | "delta"
   | "reactions" | "comments" | "shares" | "followers" | "totalRevenue";
@@ -49,7 +49,7 @@ export function PostsView({ b }: { b: PageBundle }) {
   const pick = (t: string) => { setType(t); progress.pulse(); };
 
   const title = (r: PostRow) => (secret ? `โพสต์ #${nos[r.key]}` : r.p.message || "(ไม่มีข้อความ)");
-  const rows = useMemo(() => buildRows(b, win, lastDay), [b, win, lastDay]);
+  const rows = useMemo(() => buildRows(b, win, lastDay, range.allow), [b, win, lastDay, range.allow]);
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: rows.length };
     for (const r of rows) c[r.p.type] = (c[r.p.type] ?? 0) + 1;
@@ -125,7 +125,10 @@ export function PostsView({ b }: { b: PageBundle }) {
             · <b className="num font-semibold text-up">{usd(totals.r)}</b>
           </p>
         </div>
-        <RangePicker value={range.key} onChange={(r) => range.set({ r })} pickDay={range.pickDay} onPickDay={(d) => range.set({ d })} min={firstDay} max={lastDay} />
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
+          <RangePicker value={range.key} onChange={(r) => range.set({ r })} pickDay={range.pickDay} onPickDay={(d) => range.set({ d })} min={firstDay} max={lastDay} />
+          <WeekdayFilter mask={range.mask} onChange={(w) => range.set({ w })} />
+        </div>
       </div>
 
       <section className="card overflow-hidden">

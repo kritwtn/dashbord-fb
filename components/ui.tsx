@@ -1,7 +1,8 @@
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, Inbox, Info, RotateCw } from "lucide-react";
-import { RANGES, type RangeKey } from "@/lib/range";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarRange, Check, Inbox, Info, RotateCw } from "lucide-react";
+import { ALL_DAYS, maskLabel, RANGES, WEEKDAY_LABELS, type RangeKey } from "@/lib/range";
 import { TYPE_LABEL } from "@/lib/format";
 import { DatePicker } from "./DatePicker";
+import { useEffect, useRef, useState } from "react";
 
 export const Dash = () => <span className="text-faint">–</span>;
 
@@ -106,6 +107,58 @@ export function ErrorState({ title = "โหลดข้อมูลไม่ส
       <div className="mt-3 text-sm font-medium">{title}</div>
       {detail && <div className="mt-1 max-w-sm break-words text-xs text-muted">{detail}</div>}
       {onRetry && <button className="btn mt-4 h-8 text-[13px]" onClick={onRetry}><RotateCw size={14} />ลองอีกครั้ง</button>}
+    </div>
+  );
+}
+
+/** "วัน: ทุกวัน" popover — include/exclude days of the week. */
+export function WeekdayFilter({ mask, onChange }: { mask: string; onChange: (m: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  const filtered = mask !== ALL_DAYS;
+  const toggle = (i: number) => {
+    const next = mask.split("").map((c, j) => (j === i ? (c === "1" ? "0" : "1") : c)).join("");
+    if (next !== "0000000") onChange(next);
+  };
+  const presets: [string, string][] = [["ทุกวัน", ALL_DAYS], ["จันทร์–ศุกร์", "1111100"], ["เสาร์–อาทิตย์", "0000011"]];
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button onClick={() => setOpen((v) => !v)} aria-haspopup="dialog" aria-expanded={open}
+        className={`btn h-9 ${filtered ? "border-primary/60 bg-primary-soft" : ""}`} title="กรองวันในสัปดาห์">
+        <CalendarRange size={15} className={filtered ? "text-primary-text" : "text-muted"} />
+        <span className="whitespace-nowrap">วัน: {maskLabel(mask)}</span>
+      </button>
+      {open && (
+        <div role="dialog" aria-label="กรองวันในสัปดาห์" className="menu right-0 w-[268px] p-3">
+          <div className="mb-2 text-xs font-medium text-muted">นับเฉพาะวัน</div>
+          <div className="grid grid-cols-7 gap-1">
+            {WEEKDAY_LABELS.map((l, i) => {
+              const on = mask[i] === "1";
+              return (
+                <button key={l} onClick={() => toggle(i)} aria-pressed={on}
+                  className={`h-9 rounded-lg text-[13px] font-medium transition-colors ${on ? "bg-primary text-primary-ink" : "bg-subtle text-muted hover:text-text"} ${i >= 5 && !on ? "text-down/80" : ""}`}>
+                  {l}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-3 space-y-0.5 border-t border-line pt-2">
+            {presets.map(([label, m]) => (
+              <button key={m} className="menu-item py-1.5" onClick={() => { onChange(m); setOpen(false); }}>
+                <Check size={14} className={mask === m ? "text-primary-text" : "opacity-0"} />{label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

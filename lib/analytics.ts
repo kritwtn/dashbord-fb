@@ -5,10 +5,13 @@ import type { PageDay, PostInfo } from "./types";
 
 type DailyMap = Record<string, { v: number; r: number }> | undefined;
 
-export function sumDaily(m: DailyMap, from: string, to: string) {
+/** `allow` optionally restricts to certain weekdays (see makeAllow). */
+export type Allow = ((day: string) => boolean) | undefined;
+
+export function sumDaily(m: DailyMap, from: string, to: string, allow?: Allow) {
   let v = 0, r = 0;
   if (!m || !from) return { v, r };
-  for (const [d, x] of Object.entries(m)) if (d >= from && d <= to) { v += x?.v ?? 0; r += x?.r ?? 0; }
+  for (const [d, x] of Object.entries(m)) if (d >= from && d <= to && (!allow || allow(d))) { v += x?.v ?? 0; r += x?.r ?? 0; }
   return { v, r };
 }
 
@@ -21,10 +24,10 @@ export function dayBounds(b: PageBundle): [string, string] {
   return [max ? min : today, max || today];
 }
 
-export function pageSum(b: PageBundle, key: keyof PageDay, from: string, to: string) {
+export function pageSum(b: PageBundle, key: keyof PageDay, from: string, to: string, allow?: Allow) {
   if (!from) return 0;
   let s = 0;
-  for (const [d, v] of Object.entries(b.pageDaily)) if (d >= from && d <= to) s += v[key] ?? 0;
+  for (const [d, v] of Object.entries(b.pageDaily)) if (d >= from && d <= to && (!allow || allow(d))) s += v[key] ?? 0;
   return s;
 }
 
@@ -50,13 +53,13 @@ export type PostRow = {
   spark: number[];
 };
 
-export function buildRows(b: PageBundle, win: Window, lastDay: string): PostRow[] {
+export function buildRows(b: PageBundle, win: Window, lastDay: string, allow?: Allow): PostRow[] {
   const sparkDays = daysBetween(addDays(lastDay, -13), lastDay);
   return Object.entries(b.posts).map(([key, p]) => {
     const L = b.latest[key];
     const P = b.prev[key];
-    const cur = sumDaily(b.postDaily[key], win.from, win.to);
-    const prev = sumDaily(b.postDaily[key], win.prevFrom, win.prevTo);
+    const cur = sumDaily(b.postDaily[key], win.from, win.to, allow);
+    const prev = sumDaily(b.postDaily[key], win.prevFrom, win.prevTo, allow);
     // stories have no daily series: use their lifetime views as "in range" when created inside the window
     const story = p.type === "story";
     const inWin = p.createdTime.slice(0, 10) >= win.from && p.createdTime.slice(0, 10) <= addDays(win.to, 1);

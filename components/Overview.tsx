@@ -12,7 +12,7 @@ import { DatePicker } from "./DatePicker";
 import { Drawer } from "./Drawer";
 import { maskPage, Thumb, useSecret } from "./Secret";
 import { Sparkline } from "./Sparkline";
-import { Dash, EmptyState, Growth, InfoTip, RangePicker, TypeBadge } from "./ui";
+import { Dash, EmptyState, Growth, InfoTip, RangePicker, TypeBadge, WeekdayFilter } from "./ui";
 
 type KpiDef = { key: keyof PageDay; label: string; color: string; icon: typeof Eye; money?: boolean; help: string };
 const KPIS: KpiDef[] = [
@@ -43,11 +43,11 @@ export function Overview({ b, pageIndex }: { b: PageBundle; pageIndex: number })
   const ghost = range.key !== "all" && metric !== "follows";
   const chartData = chartDays.map((day) => ({
     day,
-    cur: b.pageDaily[day]?.[metric] ?? null,
-    prev: ghost ? b.pageDaily[addDays(day, -span)]?.[metric] ?? null : null,
+    cur: range.allow && !range.allow(day) ? null : b.pageDaily[day]?.[metric] ?? null,
+    prev: ghost && (!range.allow || range.allow(addDays(day, -span))) ? b.pageDaily[addDays(day, -span)]?.[metric] ?? null : null,
   }));
 
-  const rows = useMemo(() => buildRows(b, win, lastDay), [b, win, lastDay]);
+  const rows = useMemo(() => buildRows(b, win, lastDay, range.allow), [b, win, lastDay, range.allow]);
   const [topBy, setTopBy] = useState<"views" | "revenue" | "engagement">("views");
   const topVal = (r: (typeof rows)[number]) => (topBy === "views" ? r.views : topBy === "revenue" ? r.revenue : r.reactions + r.comments + r.shares);
   const topRange = [...rows].filter((r) => topVal(r) > 0).sort((a, c) => topVal(c) - topVal(a)).slice(0, 8);
@@ -70,14 +70,17 @@ export function Overview({ b, pageIndex }: { b: PageBundle; pageIndex: number })
             {win.prevFrom && <span className="whitespace-nowrap text-faint"> · เทียบ {thDay(win.prevFrom)}{win.prevFrom !== win.prevTo ? ` – ${thDay(win.prevTo)}` : ""}</span>}
           </p>
         </div>
-        <RangePicker value={range.key} onChange={(r) => range.set({ r })} pickDay={range.pickDay} onPickDay={(d) => range.set({ d })} min={firstDay} max={lastDay} />
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
+          <RangePicker value={range.key} onChange={(r) => range.set({ r })} pickDay={range.pickDay} onPickDay={(d) => range.set({ d })} min={firstDay} max={lastDay} />
+          <WeekdayFilter mask={range.mask} onChange={(w) => range.set({ w })} />
+        </div>
       </div>
 
       {/* KPI cards */}
       <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
         {KPIS.map((k, i) => {
-          const cur = pageSum(b, k.key, win.from, win.to);
-          const prev = pageSum(b, k.key, win.prevFrom, win.prevTo);
+          const cur = pageSum(b, k.key, win.from, win.to, range.allow);
+          const prev = pageSum(b, k.key, win.prevFrom, win.prevTo, range.allow);
           const active = metric === k.key;
           return (
             <div key={k.key} role="button" tabIndex={0} onClick={() => setMetric(k.key)}
@@ -95,7 +98,7 @@ export function Overview({ b, pageIndex }: { b: PageBundle; pageIndex: number })
                 <Growth g={win.prevFrom ? pct(cur, prev) : undefined} pill />
                 <span className="whitespace-nowrap text-xs text-muted">{win.prevFrom ? `จาก ${k.money ? usd(prev) : compact(prev)} ช่วงก่อน` : `${span} วัน`}</span>
               </div>
-              <div className="mt-3 h-8 w-full"><Sparkline values={chartDays.map((d) => b.pageDaily[d]?.[k.key] ?? 0)} width={240} height={32} color={k.color} fluid /></div>
+              <div className="mt-3 h-8 w-full"><Sparkline values={chartDays.map((d) => (range.allow && !range.allow(d) ? 0 : b.pageDaily[d]?.[k.key] ?? 0))} width={240} height={32} color={k.color} fluid /></div>
             </div>
           );
         })}

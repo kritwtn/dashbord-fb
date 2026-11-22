@@ -1,6 +1,6 @@
 import { usePathname, useRouter, useSearchParams } from "./nav";
 import { progress } from "@/components/TopProgress";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { addDays } from "./format";
 
 export type RangeKey = "month" | "1" | "7" | "28" | "90" | "all" | "day";
@@ -32,6 +32,18 @@ export function computeWindow(key: RangeKey, firstDay: string, lastDay: string, 
   return { from, to: lastDay, prevFrom: addDays(from, -n), prevTo: addDays(from, -1), len: n };
 }
 
+/** Weekday filter: 7 chars Mon..Sun, "1" = included. */
+export const ALL_DAYS = "1111111";
+export const WEEKDAY_LABELS = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
+export const weekdayIndex = (day: string) => (new Date(day + "T00:00:00Z").getUTCDay() + 6) % 7; // Mon=0
+export const makeAllow = (mask: string) => (mask === ALL_DAYS ? undefined : (day: string) => mask[weekdayIndex(day)] === "1");
+export function maskLabel(mask: string) {
+  if (mask === ALL_DAYS) return "ทุกวัน";
+  if (mask === "1111100") return "จันทร์–ศุกร์";
+  if (mask === "0000011") return "เสาร์–อาทิตย์";
+  return WEEKDAY_LABELS.filter((_, i) => mask[i] === "1").join(" ") || "ไม่ได้เลือก";
+}
+
 /** Range lives in the URL (?r=…&d=…) so Overview and Posts share it and links are shareable. */
 export function useRangeParam(lastDay: string) {
   const sp = useSearchParams();
@@ -39,12 +51,15 @@ export function useRangeParam(lastDay: string) {
   const router = useRouter();
   const key = (RANGES.find((r) => r.key === sp.get("r"))?.key ?? "month") as RangeKey;
   const pickDay = sp.get("d") ?? addDays(lastDay, -1);
+  const rawMask = sp.get("w");
+  const mask = rawMask && /^[01]{7}$/.test(rawMask) && rawMask !== "0000000" ? rawMask : ALL_DAYS;
   const set = useCallback(
-    (patch: { r?: RangeKey; d?: string }) => {
+    (patch: { r?: RangeKey; d?: string; w?: string }) => {
       const next = new URLSearchParams(sp.toString());
       if (patch.r) patch.r === "month" ? next.delete("r") : next.set("r", patch.r);
       if (patch.d) next.set("d", patch.d);
       if (patch.r && patch.r !== "day") next.delete("d");
+      if (patch.w) patch.w === ALL_DAYS ? next.delete("w") : next.set("w", patch.w);
       const qs = next.toString();
       // client-side only: everything is computed from data already loaded
       router.replace(qs ? `${pathname}?${qs}` : pathname);
@@ -52,5 +67,6 @@ export function useRangeParam(lastDay: string) {
     },
     [sp, pathname, router],
   );
-  return { key, pickDay, set, query: sp.toString() };
+  const allow = useMemo(() => makeAllow(mask), [mask]);
+  return { key, pickDay, mask, allow, set, query: sp.toString() };
 }

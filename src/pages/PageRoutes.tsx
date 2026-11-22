@@ -1,6 +1,7 @@
 import { Outlet, useOutletContext, useParams } from "react-router-dom";
 import { AppShell } from "@/components/AppShell";
 import { AudienceView } from "@/components/AudienceView";
+import { TimingView } from "@/components/TimingView";
 import { Overview } from "@/components/Overview";
 import { PostDetail } from "@/components/PostDetail";
 import { PostsView } from "@/components/PostsView";
@@ -71,4 +72,12 @@ export function AudiencePage() {
   if (error) return <Failed error={error} />;
   if (!data) return <PageSkeleton />;
   return <AudienceView key={pageId} data={data} pageName={pages[pageIndex]?.name ?? ""} pageIndex={pageIndex} />;
+}
+
+export function TimingPage() {
+  const { pageId = "" } = useParams();
+  const { data, error } = useData(() => loadPage(pageId), [pageId]);
+  if (error) return <Failed error={error} />;
+  if (!data) return <PageSkeleton />;
+  return <TimingView key={pageId} b={data} />;
 }

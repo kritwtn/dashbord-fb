@@ -1,4 +1,5 @@
-import { ArrowLeft, CalendarDays, CircleDollarSign, Clock, ExternalLink, Eye, UserPlus } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeft, CalendarDays, CircleDollarSign, Clock, ExternalLink, Eye, Maximize2, Minimize2, UserPlus } from "lucide-react";
 import Link from "@/lib/nav";
 import { ageLabel, daysBetween, metaDayInBkk, num, thDate, thDateParts, thDay, usd } from "@/lib/format";
 import type { Metrics, PostDay, PostInfo, SyncRun } from "@/lib/types";
@@ -35,6 +36,7 @@ export function PostDetail(props: {
 }) {
   const { post, latest, daily, snapshots } = props;
   const { on: secret } = useSecret();
+  const [showAll, setShowAll] = useState(false);
   const days = Object.keys(daily).sort();
   let cum = 0;
   const data = days.length
@@ -45,6 +47,7 @@ export function PostDetail(props: {
       })
     : [];
   const enoughForChart = data.length > 3;
+  const canExpand = enoughForChart; // a phone already scrolls at 4 days
 
   return (
     <div className="fade-in mx-auto max-w-[1100px] space-y-5 px-4 pb-12 pt-6 sm:px-6">
@@ -122,38 +125,46 @@ export function PostDetail(props: {
             <div className="card-title flex items-center gap-2">วิวและรายได้รายวัน <MetaDay /></div>
             {enoughForChart && <div className="mt-1"><Legend items={[{ label: "วิว (3 วินาที)", color: "var(--color-c1)" }, { label: "รายได้", color: "var(--color-c5)" }]} /></div>}
           </div>
+          {canExpand && (
+            <button type="button" className={`btn h-8 shrink-0 whitespace-nowrap text-[13px] ${data.length > 6 ? "" : "sm:hidden"}`} aria-pressed={showAll} onClick={() => setShowAll((v) => !v)}>
+              {showAll ? <><Minimize2 size={14} /> ย่อ</> : <><Maximize2 size={14} /> แสดงทั้งหมด</>}
+            </button>
+          )}
         </div>
         {enoughForChart ? (
           <div className="px-2 pb-3 pt-4 sm:px-4">
-            <DailyChart data={data} height={300} series={[
+            <DailyChart data={data} height={showAll ? 340 : 300} fit={showAll} series={[
               { key: "views", label: "วิว", kind: "bar", color: "var(--color-c1)", labels: true },
               { key: "revenue", label: "รายได้", kind: "line", color: "var(--color-c5)", axis: "right", format: usd },
             ]} />
           </div>
         ) : null}
         {data.length ? (
-          <div className="max-h-[360px] overflow-auto border-t border-line">
+          <div className={`border-t border-line ${showAll ? "overflow-x-auto" : "max-h-[360px] overflow-auto"}`}>
             <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-subtle text-xs text-muted">
-                <tr><th className="px-5 py-2.5 text-left font-medium">วัน</th><th className="px-5 py-2.5 text-right font-medium">วิว</th><th className="px-5 py-2.5 text-right font-medium">สะสม</th><th className="px-5 py-2.5 text-right font-medium">รายได้</th></tr>
+              <thead className={`bg-subtle text-xs text-muted ${showAll ? "" : "sticky top-0"}`}>
+                <tr><th className="px-3 py-2.5 sm:px-5 text-left font-medium">วัน</th><th className="px-3 py-2.5 sm:px-5 text-right font-medium">วิว</th><th className="px-3 py-2.5 sm:px-5 text-right font-medium">สะสม</th><th className="px-3 py-2.5 sm:px-5 text-right font-medium">รายได้</th></tr>
               </thead>
               <tbody className="divide-y divide-line">
                 {[...data].reverse().map((d) => (
                   <tr key={d.day} className="transition-colors hover:bg-hover">
-                    <td className="px-5 py-2">
+                    <td className="px-3 py-2 sm:px-5">
                       {(() => {
                         const r = metaDayInBkk(d.day);
                         return (
                           <>
                             <div>{thDay(d.day)}</div>
-                            <div className="num text-[11px] text-muted">{thDay(r.start.day)} {r.start.time} – {thDay(r.end.day)} {r.end.time} น.</div>
+                            <div className="num text-[11px] text-muted">
+                              <span className="whitespace-nowrap">{thDay(r.start.day)} {r.start.time} –</span>{" "}
+                              <span className="whitespace-nowrap">{thDay(r.end.day)} {r.end.time} น.</span>
+                            </div>
                           </>
                         );
                       })()}
                     </td>
-                    <td className="num px-5 py-2 text-right font-medium">{num(d.views)}</td>
-                    <td className="num px-5 py-2 text-right text-muted">{num(d.cum)}</td>
-                    <td className="num px-5 py-2 text-right text-up">{d.revenue ? usd(d.revenue) : <Dash />}</td>
+                    <td className="num px-3 py-2 text-right sm:px-5 font-medium">{num(d.views)}</td>
+                    <td className="num px-3 py-2 text-right sm:px-5 text-muted">{num(d.cum)}</td>
+                    <td className="num px-3 py-2 text-right sm:px-5 text-up">{d.revenue ? usd(d.revenue) : <Dash />}</td>
                   </tr>
                 ))}
               </tbody>

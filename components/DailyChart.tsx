@@ -18,6 +18,14 @@ const TH_SHORT = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค
 const PX_PER_DAY = 48;
 const AXIS_W = 48;
 const X_AXIS_H = 34;
+/** `fit` mode: below these widths per day, value labels turn vertical / date numbers shrink / text is thinned out. */
+const FIT_ROTATE = 36;
+const FIT_SMALL = 17;
+const FIT_THIN = 9.5;
+
+/** Invisible series that carries the value labels above every other mark. */
+const LABEL_LAYER = "__labels";
+const fitFont = (perDay: number, normal: number) => (perDay < 12 ? 8 : perDay < FIT_SMALL ? 9 : normal);
 
 function Tip({ active, payload, label, series, compare }: any) {
   if (!active || !payload?.length) return null;
@@ -29,7 +37,7 @@ function Tip({ active, payload, label, series, compare }: any) {
       <div className="mb-1.5 font-medium text-text">{thDay(String(label))}</div>
       {[...payload].sort((x: any, y: any) => (x.dataKey === "prev" ? 1 : 0) - (y.dataKey === "prev" ? 1 : 0)).map((p: any) => {
         const s: Series | undefined = series.find((x: Series) => x.key === p.dataKey);
-        if (!s || p.value == null) return null;
+        if (!s || p.value == null || p.name === LABEL_LAYER) return null;
         return (
           <div key={p.dataKey} className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full" style={{ background: s.kind === "ghost" ? "var(--color-faint)" : s.color }} />
@@ -57,23 +65,30 @@ function niceScale(max: number) {
 }
 
 /** Two-line date tick: day number, plus the month under the 1st of a month / first point. */
-function DateTick({ x, y, payload, index, visibleTicksCount }: any) {
-  const [, m, d] = String(payload.value).split("-").map(Number);
+function DateTick({ x, y, payload, index, visibleTicksCount, size = 11, every = 1, near = 0 }: any) {
+  const [yy, m, d] = String(payload.value).split("-").map(Number);
   // month under the 1st, the 15th and both ends, so a scrolled view always has context
-  const showMonth = d === 1 || d === 15 || index === 0 || index === visibleTicksCount - 1;
+  // (an end is skipped when the next 1st/15th is closer than `near` days, so the names never collide)
+  const toNext = d < 15 ? 15 - d : new Date(Date.UTC(yy, m, 0)).getUTCDate() - d + 1;
+  const fromPrev = d < 15 ? d - 1 : d - 15;
+  const showMonth = d === 1 || d === 15 || (index === 0 && toNext >= near) || (index === visibleTicksCount - 1 && fromPrev >= near);
+  const showDay = (visibleTicksCount - 1 - index) % every === 0;
   return (
     <g transform={`translate(${x},${y})`}>
-      <text dy={12} textAnchor="middle" fontSize={11} fill="var(--color-muted)" style={{ fontFamily: "var(--font-num)" }}>{d}</text>
+      {showDay && <text dy={12} textAnchor="middle" fontSize={size} fill="var(--color-muted)" style={{ fontFamily: "var(--font-num)" }}>{d}</text>}
       {showMonth && <text dy={26} textAnchor="middle" fontSize={10.5} fontWeight={600} fill="var(--color-text)">{TH_SHORT[m - 1]}</text>}
     </g>
   );
 }
 
-export function DailyChart({ data, series, height = 280, compare }: { data: Record<string, any>[]; series: Series[]; height?: number; compare?: boolean }) {
+export function DailyChart({ data, series, height = 280, compare, fit }: {
+  data: Record<string, any>[]; series: Series[]; height?: number; compare?: boolean;
+  /** Squeeze every day into the visible width instead of scrolling. */
+  fit?: boolean;
+}) {
   const uid = useId().replace(/:/g, "");
   const hasRight = series.some((s) => s.axis === "right");
   const hasLabels = series.some((s) => s.labels);
-  const top = hasLabels ? 26 : 10;
   const box = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const [boxW, setBoxW] = useState(0);
@@ -87,7 +102,12 @@ export function DailyChart({ data, series, height = 280, compare }: { data: Reco
   const viewW = Math.max(0, boxW - AXIS_W - (hasRight ? AXIS_W : 0));
   const need = data.length * PX_PER_DAY + 48;
   // a few px of overflow isn't worth a scrollbar: squeeze instead
-  const contentW = need - viewW < 80 ? viewW : need;
+  const contentW = fit || need - viewW < 80 ? viewW : need;
+  const margin = fit ? 8 : 24;
+  const perDay = fit && viewW ? (viewW - margin * 2) / Math.max(1, data.length) : PX_PER_DAY;
+  const rotate = perDay < FIT_ROTATE;
+  const every = perDay < FIT_THIN ? Math.ceil(FIT_THIN / perDay) : 1; // only on very narrow screens
+  const top = hasLabels ? (rotate ? 46 : 26) : 10;
   const scrolls = contentW > viewW + 1;
 
   // start at the latest day (right edge) once the chart has its real width
@@ -113,8 +133,10 @@ export function DailyChart({ data, series, height = 280, compare }: { data: Reco
         const { x, y, width, value } = p;
         if (value == null || value === 0) return null;
         const cx = Number(x) + (width ? Number(width) / 2 : 0);
+        if (rotate && (data.length - 1 - p.index) % every !== 0) return null;
         return (
-          <text x={cx} y={Number(y) - 9} textAnchor="middle" fontSize={10.5} fontWeight={600} fill="var(--color-text)"
+          <text x={cx} y={Number(y) - (rotate ? 5 : 9)} textAnchor={rotate ? "start" : "middle"} fontSize={rotate ? fitFont(perDay, 10.5) : 10.5}
+            {...(rotate ? { transform: `rotate(-90 ${cx} ${Number(y) - 5})`, dominantBaseline: "central" } : {})} fontWeight={600} fill="var(--color-text)"
             style={{ fontFamily: "var(--font-num)", paintOrder: "stroke", stroke: "var(--color-surface)", strokeWidth: 4, strokeLinejoin: "round" }}>
             {s.format ? s.format(Number(value)) : compact(Number(value))}
           </text>
@@ -138,7 +160,7 @@ export function DailyChart({ data, series, height = 280, compare }: { data: Reco
       <AxisCol scale={left} fmt={(n) => compact(n)} side="left" />
       <div ref={scroller} className={`min-w-0 flex-1 ${scrolls ? "overflow-x-auto overscroll-x-contain" : "overflow-hidden"}`}>
         {boxW > 0 && (
-          <ComposedChart width={contentW} height={height} data={data} margin={{ top, right: 24, bottom: 0, left: 24 }}>
+          <ComposedChart width={contentW} height={height} data={data} margin={{ top, right: margin, bottom: 0, left: margin }}>
             <defs>
               {series.map((s) => (
                 <linearGradient key={s.key} id={`${uid}-${s.key}`} x1="0" y1="0" x2="0" y2="1">
@@ -148,14 +170,14 @@ export function DailyChart({ data, series, height = 280, compare }: { data: Reco
               ))}
             </defs>
             <CartesianGrid stroke="var(--color-line)" vertical={false} />
-            <XAxis dataKey="day" interval={0} tick={<DateTick />} tickLine={false} axisLine={false} height={X_AXIS_H} />
+            <XAxis dataKey="day" interval={0} tick={<DateTick size={fitFont(perDay, 11)} every={every} near={fit ? Math.min(data.length - 1, Math.ceil(32 / perDay)) : 0} />} tickLine={false} axisLine={false} height={X_AXIS_H} />
             <YAxis yAxisId="left" hide domain={[0, left.top]} ticks={left.ticks} />
             {right && <YAxis yAxisId="right" orientation="right" hide domain={[0, right.top]} ticks={right.ticks} />}
             <Tooltip content={<Tip series={series} compare={compare} />} allowEscapeViewBox={{ x: false, y: true }}
               cursor={{ stroke: "var(--color-faint)", strokeWidth: 1, strokeDasharray: "3 3", fill: "var(--color-hover)" }} />
             {series.map((s) => {
-              const common = { dataKey: s.key, name: s.label, yAxisId: s.axis ?? "left", isAnimationActive: s.kind !== "ghost" && !scrolls, animationDuration: 450, animationEasing: "ease-out" as const };
-              if (s.kind === "bar") return <Bar key={s.key} {...common} fill={`url(#${uid}-${s.key})`} radius={[5, 5, 0, 0]} maxBarSize={26}>{valueLabel(s)}</Bar>;
+              const common = { dataKey: s.key, name: s.label, yAxisId: s.axis ?? "left", isAnimationActive: s.kind !== "ghost" && !scrolls && !fit, animationDuration: 450, animationEasing: "ease-out" as const };
+              if (s.kind === "bar") return <Bar key={s.key} {...common} fill={`url(#${uid}-${s.key})`} radius={[5, 5, 0, 0]} maxBarSize={26}>{fit ? null : valueLabel(s)}</Bar>;
               if (s.kind === "area")
                 return <Area key={s.key} {...common} type="monotone" stroke={s.color} strokeWidth={2} fill={`url(#${uid}-${s.key})`} dot={{ r: 2.5, fill: s.color, strokeWidth: 0 }}
                   activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--color-surface)", fill: s.color }} connectNulls>{valueLabel(s)}</Area>;
@@ -164,6 +186,9 @@ export function DailyChart({ data, series, height = 280, compare }: { data: Reco
               return <Line key={s.key} {...common} type="monotone" stroke={s.color} strokeWidth={2} dot={{ r: 2.5, fill: s.color, strokeWidth: 0 }}
                 activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--color-surface)", fill: s.color }} connectNulls>{valueLabel(s)}</Line>;
             })}
+            {fit && series.filter((s) => s.kind === "bar" && s.labels).map((s) => (
+              <Line key={`labels-${s.key}`} dataKey={s.key} name={LABEL_LAYER} yAxisId={s.axis ?? "left"} stroke="none" dot={false} activeDot={false} isAnimationActive={false} legendType="none">{valueLabel(s)}</Line>
+            ))}
           </ComposedChart>
         )}
       </div>

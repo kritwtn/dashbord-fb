@@ -50,12 +50,7 @@ export const metaDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA"
  * (or 14:00 during US daylight saving) in Bangkok, and ends 24h later.
  */
 export function metaDayInBkk(day: string) {
-  let start = new Date(`${day}T08:00:00Z`);
-  for (const h of ["07", "08"]) {
-    const d = new Date(`${day}T${h}:00:00Z`);
-    const hr = Number(d.toLocaleString("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hourCycle: "h23" }));
-    if (hr === 0) start = d;
-  }
+  const start = new Date(metaDayStart(day));
   const fmt = (d: Date) => {
     const b = new Date(d.getTime() + 7 * 3600 * 1000).toISOString();
     return { day: b.slice(0, 10), time: b.slice(11, 16) };
@@ -78,4 +73,13 @@ export function thDateParts(iso: string) {
   const time = d.toLocaleTimeString("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit" }) + " น.";
   // th-TH already renders "วันเสาร์ที่ 21 พฤศจิกายน 2569"
   return { date, time };
+}
+
+/** Epoch ms at which a Meta day (Pacific midnight) begins. */
+export function metaDayStart(day: string) {
+  for (const h of ["07", "08"]) {
+    const d = new Date(`${day}T${h}:00:00Z`);
+    if (Number(d.toLocaleString("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hourCycle: "h23" })) === 0) return d.getTime();
+  }
+  return new Date(`${day}T08:00:00Z`).getTime();
 }

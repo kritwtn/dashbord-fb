@@ -1,5 +1,5 @@
 import { db, safeKey } from "./store";
-import { fetchAudience, fetchPageDaily, fetchPostDaily, fetchPostMetrics, fetchPosts, fetchStories, pageToken, refreshPages } from "./fb";
+import { fetchAudience, fetchFollowers, fetchPageDaily, fetchPostDaily, fetchPostMetrics, fetchPosts, fetchStories, pageToken, refreshPages } from "./fb";
 import type { Metrics, PostInfo, SyncRun } from "./types";
 
 /** Sync id sorts chronologically and is a valid Firebase key, e.g. 20261121-204512 (Asia/Bangkok). */
@@ -19,63 +19,84 @@ export type SyncOptions = {
 };
 
 const DAY = 86400000;
-/** A post counts as "active" (worth re-fetching) if it is this young or got views in the last ACTIVE_DAYS. */
 const YOUNG_DAYS = 14;
 const ACTIVE_DAYS = 7;
+const ACTIVE_VIEWS = 100;
+const bkkDay = (ms: number) => new Date(ms + 7 * 3600000).toISOString().slice(0, 10);
 
 /**
- * Normal sync is incremental: daily series only from the last sync (−2 days overlap, Meta finalises
- * late) to today, and lifetime metrics only for new/young/active posts. `full` refetches everything.
+ * Incremental sync. Always refreshed: posts never synced, younger than YOUNG_DAYS, or with ≥ ACTIVE_VIEWS video
+ * views in the last ACTIVE_DAYS. Every other post is refreshed by the first sync of each Thai day, so a quiet
+ * post that takes off again is picked up. The daily series goes back to the stalest refreshed post (−2 days,
+ * Meta finalises late). `full` refetches everything.
  */
 export async function syncPage(pageId: string, opts: SyncOptions = {}): Promise<SyncRun> {
   const { source = "api", full = false } = opts;
   const at = Date.now();
   const id = newSyncId(new Date(at));
   const token = await pageToken(pageId);
+  const read = (p: string) => db().ref(p).get().then((s) => s.val());
+
+  // none of these need the post list, so they run alongside it
+  const storiesP = fetchStories(pageId, token).catch(() => []); // stories only exist for 24h; best effort
+  const followersP = fetchFollowers(pageId, token).catch(() => undefined);
+  const [page, knownLatest, knownDaily]: any[] = await Promise.all([
+    read(`pages/${pageId}`),
+    full ? {} : read(`latest/${pageId}`).then((v) => v ?? {}),
+    full ? {} : read(`postDaily/${pageId}`).then((v) => v ?? {}),
+  ]);
+  const lastSyncAt: number | undefined = full ? undefined : page?.lastSyncAt;
+  const sinceLast = opts.dailyDays ?? (lastSyncAt ? Math.min(90, Math.max(3, Math.ceil((at - lastSyncAt) / DAY) + 2)) : 30);
 
   const postDays = full ? 3650 : opts.postDays ?? 90;
   const since = new Date(at - postDays * DAY).toISOString().slice(0, 10);
-  const posts = await fetchPosts(pageId, token, since);
-
-  const [lastSyncAt, knownLatest, knownDaily] = full
-    ? [undefined, {}, {}]
-    : await Promise.all([
-        db().ref(`pages/${pageId}/lastSyncAt`).get().then((s) => s.val() as number | null),
-        db().ref(`latest/${pageId}`).get().then((s) => s.val() ?? {}),
-        db().ref(`postDaily/${pageId}`).get().then((s) => s.val() ?? {}),
-      ]);
+  const pageSeries = (days: number) =>
+    Promise.all([
+      fetchPageDaily(pageId, token, days),
+      // audience lags ~2 days, so always look back at least a week
+      fetchAudience(pageId, token, Math.max(days, 7)).catch(() => ({})),
+    ]);
+  const early = full ? null : pageSeries(sinceLast);
+  early?.catch(() => {}); // awaited below; avoids an unhandled rejection if listing posts fails first
+  // the comment-count listing needs pages_read_user_content; remember a refusal instead of retrying every sync
+  const { posts, hasCounts } = await fetchPosts(pageId, token, since, full || !page?.noUserContent);
 
   // ----- which posts to refresh
   const activeSince = new Date(at - ACTIVE_DAYS * DAY).toISOString().slice(0, 10);
-  const isActive = (info: PostInfo) => {
+  const needsRefresh = (info: PostInfo) => {
     if (full) return true;
     const k = safeKey(info.id);
-    if (!(knownLatest as any)[k]) return true; // never synced
+    const known = knownLatest[k];
+    if (!known) return true;
     if (at - new Date(info.createdTime).getTime() < YOUNG_DAYS * DAY) return true;
-    const days = (knownDaily as any)[k] ?? {};
-    return Object.entries<any>(days).some(([d, v]) => d >= activeSince && (v?.v ?? 0) > 0);
+    let views = 0;
+    for (const [d, v] of Object.entries<any>(knownDaily[k] ?? {})) if (d >= activeSince) views += v?.v ?? 0;
+    return views >= ACTIVE_VIEWS || bkkDay(known.at ?? 0) < bkkDay(at);
   };
-  const refresh = posts.filter((p) => isActive(p.info));
+  const refresh = posts.filter((p) => needsRefresh(p.info));
 
-  // ----- daily window
+  // ----- daily window: cover the stalest post being refreshed
   const oldest = posts.reduce((t, p) => Math.min(t, new Date(p.info.createdTime).getTime()), at);
+  const stalest = refresh.reduce((t, p) => Math.min(t, knownLatest[safeKey(p.info.id)]?.at ?? t), at);
   const dailyDays = full
     ? Math.ceil((at - oldest) / DAY) + 2
-    : opts.dailyDays ?? (lastSyncAt ? Math.min(90, Math.max(3, Math.ceil((at - lastSyncAt) / DAY) + 2)) : 30);
+    : opts.dailyDays ?? Math.min(90, Math.max(sinceLast, Math.ceil((at - stalest) / DAY) + 2));
 
-  const [metrics, daily, pageDaily, stories, audience] = await Promise.all([
+  const [metrics, { daily, failed }, [pageDaily, audience], stories, followers] = await Promise.all([
     fetchPostMetrics(refresh, token),
     fetchPostDaily(refresh.map((p) => p.info), token, dailyDays),
-    fetchPageDaily(pageId, token, dailyDays),
-    fetchStories(pageId, token).catch(() => []), // stories only exist for 24h; best effort
-    // audience lags ~2 days, so always look back at least a week
-    fetchAudience(pageId, token, Math.max(dailyDays, 7)).catch(() => ({})),
+    early ?? pageSeries(dailyDays),
+    storiesP,
+    followersP,
   ]);
 
+  let refreshed = 0;
   const updates: Record<string, unknown> = {};
   for (const { info } of posts) {
     const k = safeKey(info.id);
-    const m = metrics[info.id];
+    // a post counts as refreshed only if both calls worked; otherwise its old numbers stay and the next sync retries
+    const m = failed.has(info.id) ? undefined : metrics[info.id];
+    if (m) refreshed++;
     // keep previously-known length when we didn't refetch this post
     if (m) updates[`posts/${pageId}/${k}`] = { ...info, ...(m.length != null ? { length: m.length } : {}) };
     else for (const [f, v] of Object.entries(info)) updates[`posts/${pageId}/${k}/${f}`] = v;
@@ -96,12 +117,15 @@ export async function syncPage(pageId: string, opts: SyncOptions = {}): Promise<
   const run: SyncRun = {
     id, at, source,
     postCount: posts.length + stories.length,
-    refreshed: refresh.length + stories.length,
+    refreshed: refreshed + stories.length,
+    ...(refresh.length > refreshed ? { failed: refresh.length - refreshed } : {}),
     dailyDays,
     ...(full ? { full: true } : {}),
   };
   updates[`syncs/${pageId}/${id}`] = run;
   updates[`pages/${pageId}/lastSyncAt`] = at;
+  if (followers != null) updates[`pages/${pageId}/followers`] = followers;
+  if (full || !page?.noUserContent) updates[`pages/${pageId}/noUserContent`] = hasCounts ? null : true;
   await db().ref().update(updates);
   return run;
 }

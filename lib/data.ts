@@ -1,3 +1,4 @@
+import { metaDayStart } from "./format";
 import { db } from "./store";
 import type { Metrics, PageDay, PageInfo, PostDay, PostInfo, SyncRun } from "./types";
 
@@ -85,32 +86,44 @@ export async function loadAudience(pageId: string): Promise<Record<string, Audie
 }
 
 /**
- * Followers gained per post on a given day, derived from sync snapshots (Meta only exposes a lifetime
- * total per post): last snapshot of `day` minus last snapshot before `day`. Sync ids are
- * yyyymmdd-hhmmss in Bangkok time, so "day" here is approximate vs Meta's Pacific days.
- *   gain[post]  = followers gained that day (only when both snapshots exist, or the post is new that day)
- *   total[post] = lifetime followers from the latest snapshot up to that day
+ * Followers gained per post on a Meta day (15:00–15:00 Thai time), from sync snapshots: Meta only exposes a
+ * lifetime total per post. Uses the syncs closest to the two day boundaries (at most 6h off), so the result is
+ * an approximation over [fromAt, toAt]. `null` when no sync is close enough.
  */
-export async function loadFollowGains(pageId: string, day: string) {
-  const ids = Object.keys((await db().ref(`syncs/${pageId}`).get()).val() ?? {}).sort();
-  const d = day.replace(/-/g, "");
-  const onDay = ids.filter((k) => k.slice(0, 8) === d).at(-1);
-  const before = ids.filter((k) => k.slice(0, 8) < d).at(-1);
-  // nothing synced up to that day yet → fall back to the latest lifetime totals (flagged)
-  const upTo = onDay ?? before ?? ids.at(-1);
-  const fromLater = !onDay && !before && !!upTo;
-  const [cur, prev] = await Promise.all([
-    upTo ? db().ref(`snapshots/${pageId}/${upTo}`).get().then((s) => s.val() ?? {}) : {},
-    onDay && before ? db().ref(`snapshots/${pageId}/${before}`).get().then((s) => s.val() ?? {}) : null,
-  ]);
-  const total: Record<string, number> = {};
-  const gain: Record<string, number> = {};
-  for (const [k, m] of Object.entries<any>(cur)) {
-    const t = Number(m?.followersGained) || 0;
-    total[k] = t;
-    if (!onDay) continue;
-    if (prev && prev[k]) gain[k] = Math.max(0, t - (Number(prev[k].followersGained) || 0));
-    else if (prev) gain[k] = t; // first seen after the previous snapshot → new post
+export async function loadFollowGains(pageId: string, day: string, created: Record<string, string>) {
+  const HOUR = 3600000;
+  const runs = Object.values<SyncRun>((await db().ref(`syncs/${pageId}`).get()).val() ?? {})
+    .filter((r) => r.source !== "csv")
+    .sort((a, b) => a.at - b.at);
+  const start = metaDayStart(day);
+  const end = start + 24 * HOUR;
+  const nearest = (t: number) => {
+    const r = runs.reduce<SyncRun | undefined>((best, x) => (!best || Math.abs(x.at - t) < Math.abs(best.at - t) ? x : best), undefined);
+    return r && Math.abs(r.at - t) <= 6 * HOUR ? r : undefined;
+  };
+  const from = nearest(start);
+  const to = end > Date.now() ? runs.at(-1) : nearest(end);
+  if (!from || !to || to.at <= from.at) return null;
+
+  const snap = (r: SyncRun) => db().ref(`snapshots/${pageId}/${r.id}`).get().then((s) => (s.val() ?? {}) as Record<string, Metrics>);
+  // latest value per post inside the window (a sync may skip quiet posts)
+  const inside = await Promise.all(runs.filter((r) => r.at > from.at && r.at <= to.at).map(snap));
+  const last: Record<string, number> = {};
+  for (const s of inside) for (const [k, m] of Object.entries(s)) last[k] = Number(m?.followersGained) || 0;
+  // baseline per post: newest snapshot at or before `from`; posts published after `from` start at 0
+  const base: Record<string, number> = {};
+  let missing = Object.keys(last).filter((k) => {
+    const t = created[k] ? new Date(created[k]).getTime() : 0;
+    if (t >= from.at) base[k] = 0;
+    return t < from.at;
+  });
+  for (const r of runs.filter((x) => x.at <= from.at).reverse().slice(0, 12)) {
+    if (!missing.length) break;
+    const s = await snap(r);
+    for (const k of missing) if (s[k]) base[k] = Number(s[k].followersGained) || 0;
+    missing = missing.filter((k) => !(k in base));
   }
-  return { gain, total, hasDaily: !!(onDay && before), fromLater };
+  const gain: Record<string, number> = {};
+  for (const k of Object.keys(last)) if (k in base) gain[k] = Math.max(0, last[k] - base[k]); // no baseline → unknown, not counted
+  return { gain, fromAt: from.at, toAt: to.at };
 }

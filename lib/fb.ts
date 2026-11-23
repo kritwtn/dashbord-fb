@@ -24,27 +24,56 @@ async function graph<T = any>(pathAndQuery: string, token: string, params: Recor
   return json as T;
 }
 
-/** Graph batch API: up to 50 relative GETs per call. Returns parsed body or FbError per item. */
-async function batch(relativeUrls: string[], token: string): Promise<(any | FbError)[]> {
-  const out: (any | FbError)[] = [];
-  for (let i = 0; i < relativeUrls.length; i += 50) {
-    const chunk = relativeUrls.slice(i, i + 50);
+/** Rate limits, timeouts and Meta-side hiccups: worth retrying, and never to be stored as "0". */
+const TRANSIENT = new Set([-2, -1, 1, 2, 4, 17, 32, 341, 368, 613, 80001, 80002, 80006]);
+const isTransient = (r: any): r is FbError => r instanceof FbError && TRANSIENT.has(r.err.code);
+
+const CHUNK = 40; // items per batch call (Graph allows 50; it runs them one after another, so smaller is faster)
+const PARALLEL = 6; // batch calls in flight
+
+async function batchCall(urls: string[], token: string): Promise<(any | FbError)[]> {
+  try {
     const body = new URLSearchParams({
       access_token: token,
       include_headers: "false",
-      batch: JSON.stringify(chunk.map((relative_url) => ({ method: "GET", relative_url }))),
+      batch: JSON.stringify(urls.map((relative_url) => ({ method: "GET", relative_url }))),
     });
     const res = await fetch(`https://graph.facebook.com/${V}`, { method: "POST", body, cache: "no-store" });
     const json = await res.json();
     if (!Array.isArray(json)) throw new FbError(json.error ?? { message: "batch failed", code: -1 });
-    for (const item of json) {
-      if (!item) {
-        out.push(new FbError({ message: "timeout", code: -2 }));
-        continue;
-      }
+    return urls.map((_, i) => {
+      const item = json[i];
+      if (!item) return new FbError({ message: "timeout", code: -2 });
       const parsed = JSON.parse(item.body);
-      out.push(parsed.error ? new FbError(parsed.error) : parsed);
-    }
+      return parsed.error ? new FbError(parsed.error) : parsed;
+    });
+  } catch (err) {
+    if (err instanceof FbError && !TRANSIENT.has(err.err.code)) throw err; // e.g. expired token: stop the sync
+    const fail = err instanceof FbError ? err : new FbError({ message: String(err), code: -2 });
+    return urls.map(() => fail);
+  }
+}
+
+/** Run many relative GETs via the Graph batch API: chunks go out in parallel, transient failures are retried once. */
+async function batch(relativeUrls: string[], token: string): Promise<(any | FbError)[]> {
+  const out: (any | FbError)[] = new Array(relativeUrls.length);
+  const run = async (idx: number[]) => {
+    const chunks: number[][] = [];
+    for (let i = 0; i < idx.length; i += CHUNK) chunks.push(idx.slice(i, i + CHUNK));
+    const worker = async () => {
+      for (let c = chunks.shift(); c; c = chunks.shift()) {
+        const chunk = c;
+        const res = await batchCall(chunk.map((i) => relativeUrls[i]), token);
+        chunk.forEach((i, j) => (out[i] = res[j]));
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(PARALLEL, chunks.length) }, worker));
+  };
+  await run(relativeUrls.map((_, i) => i));
+  const retry = out.flatMap((r, i) => (isTransient(r) ? [i] : []));
+  if (retry.length) {
+    await new Promise((r) => setTimeout(r, 1500));
+    await run(retry);
   }
   return out;
 }
@@ -67,10 +96,17 @@ export async function refreshPages(): Promise<{ id: string; name: string; follow
     updates[`_secrets/pageTokens/${p.id}`] = p.access_token;
     updates[`pages/${p.id}/id`] = p.id;
     updates[`pages/${p.id}/name`] = p.name;
+    updates[`pages/${p.id}/noUserContent`] = null; // new token: permissions may have changed
     if (p.followers_count != null) updates[`pages/${p.id}/followers`] = p.followers_count;
   }
   await db().ref().update(updates);
   return pages.map((p) => ({ id: p.id, name: p.name, followers: p.followers_count }));
+}
+
+/** Current follower count of a page. */
+export async function fetchFollowers(pageId: string, token: string): Promise<number | undefined> {
+  const r: any = await graph(pageId, token, { fields: "followers_count" });
+  return r.followers_count;
 }
 
 export async function pageToken(pageId: string): Promise<string> {
@@ -140,7 +176,7 @@ export async function fetchStories(pageId: string, token: string) {
 export type RawCounts = { comments?: number; reactions?: number; shares?: number };
 
 /** Lists posts published since `sinceIso`. Comment/reaction counts need pages_read_user_content; falls back without. */
-export async function fetchPosts(pageId: string, token: string, sinceIso: string) {
+export async function fetchPosts(pageId: string, token: string, sinceIso: string, tryCounts = true) {
   const base = "id,created_time,message,permalink_url,status_type,full_picture,shares";
   const rich = `${base},comments.summary(true).limit(0),reactions.summary(true).limit(0)`;
   const list = async (fields: string) => {
@@ -154,16 +190,16 @@ export async function fetchPosts(pageId: string, token: string, sinceIso: string
     return rows;
   };
   let rows: any[];
-  let hasCounts = true;
+  let hasCounts = tryCounts;
   try {
-    rows = await list(rich);
+    rows = await list(tryCounts ? rich : base);
   } catch (e) {
-    if (e instanceof FbError && e.err.code === 10) {
+    if (tryCounts && e instanceof FbError && e.err.code === 10) {
       hasCounts = false;
       rows = await list(base);
     } else throw e;
   }
-  return rows.map((p) => {
+  const posts = rows.map((p) => {
     const c = classify(p);
     const info: PostInfo = {
       id: p.id,
@@ -183,6 +219,7 @@ export async function fetchPosts(pageId: string, token: string, sinceIso: string
     };
     return { info, counts };
   });
+  return { posts, hasCounts };
 }
 
 const POST_LIFETIME = "post_media_view,post_total_media_view_unique,post_video_views,post_clicks,post_reactions_by_type_total";
@@ -198,7 +235,7 @@ const usd = (v: any): number =>
   v == null ? 0 : typeof v === "number" ? v : v.microAmount != null ? Number(v.microAmount) / 1e8 : 0;
 const sumObj = (o: any) => (o && typeof o === "object" ? Object.values(o).reduce((a: number, b: any) => a + (Number(b) || 0), 0) : 0);
 
-/** Lifetime metrics for many posts (batched). */
+/** Lifetime metrics for many posts (batched). Posts whose calls kept failing are left out, so old values survive. */
 export async function fetchPostMetrics(
   posts: { info: PostInfo; counts: RawCounts }[],
   token: string,
@@ -216,6 +253,11 @@ export async function fetchPostMetrics(
   const out: Record<string, { metrics: Metrics; length?: number }> = {};
   let i = 0;
   for (const { info, counts } of posts) {
+    const n = info.videoId ? 4 : 2;
+    if (res.slice(i, i + n).some(isTransient)) {
+      i += n;
+      continue;
+    }
     const m = emptyMetrics();
     const ins = res[i++];
     if (!(ins instanceof FbError)) {
@@ -286,8 +328,10 @@ export async function fetchPostDaily(posts: PostInfo[], token: string, days = 30
     token,
   );
   const out: Record<string, Record<string, PostDay>> = {};
+  const failed = new Set<string>();
   jobs.forEach(({ post }, i) => {
     const r = res[i];
+    if (isTransient(r)) failed.add(post.id);
     if (r instanceof FbError) return;
     const byDay = (out[post.id] ??= {});
     for (const m of r.data ?? []) {
@@ -301,7 +345,7 @@ export async function fetchPostDaily(posts: PostInfo[], token: string, days = 30
       }
     }
   });
-  return out;
+  return { daily: out, failed };
 }
 
 const PAGE_DAILY: Record<string, keyof PageDay> = {

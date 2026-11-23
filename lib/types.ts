@@ -71,6 +71,8 @@ export type SyncRun = {
   postCount: number;
   /** posts whose metrics were re-fetched in this run (incremental sync) */
   refreshed?: number;
+  /** posts that should have been refreshed but whose Graph calls kept failing (kept their old values) */
+  failed?: number;
   dailyDays?: number;
   full?: boolean;
   error?: string;

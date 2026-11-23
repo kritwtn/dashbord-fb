@@ -4,7 +4,7 @@ import {
 import Link from "@/lib/nav";
 import { usePathname, useRouter, useSearchParams } from "@/lib/nav";
 import { useEffect, useRef, useState } from "react";
-import { compact, thDate } from "@/lib/format";
+import { ageLabel, compact, thDate } from "@/lib/format";
 import type { PageInfo, SyncRun } from "@/lib/types";
 import { maskPage, useSecret } from "./Secret";
 import { ThemeToggle } from "./Theme";
@@ -35,6 +35,28 @@ function useClickAway<T extends HTMLElement>(open: boolean, close: () => void) {
     };
   }, [open, close]);
   return ref;
+}
+
+/** When the data on screen was last pulled from Facebook (Thai time), with a live "x minutes ago". */
+function LastUpdated({ at, stale, short }: { at?: number; stale: boolean; short?: boolean }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 60000);
+    return () => clearInterval(t);
+  }, []);
+  if (!at) return <span className="text-xs text-muted">ยังไม่เคย sync</span>;
+  const iso = new Date(at).toISOString();
+  const dot = <span className={`h-2 w-2 shrink-0 rounded-full ${stale ? "bg-primary" : "bg-up"}`} aria-hidden />;
+  if (short) return <span className="inline-flex items-center gap-1.5">{dot}อัปเดต {ageLabel(iso)}ที่แล้ว</span>;
+  return (
+    <span className="inline-flex h-9 items-center gap-2 rounded-[10px] border border-line bg-surface px-3 text-xs whitespace-nowrap"
+      title={`ข้อมูลล่าสุดดึงจาก Facebook เมื่อ ${thDate(iso)} (เวลาไทย)`}>
+      {dot}
+      <span className="hidden text-muted xl:inline">อัปเดตล่าสุด</span>
+      <span className="num hidden font-medium text-text lg:inline">{thDate(iso)}</span>
+      <span className="text-muted"><span className="lg:hidden">อัปเดต </span>{ageLabel(iso)}ที่แล้ว</span>
+    </span>
+  );
 }
 
 export function AppShell({ pages, pageId, email, syncs, children }: Props) {
@@ -86,7 +108,7 @@ export function AppShell({ pages, pageId, email, syncs, children }: Props) {
       // runs in the browser: Graph API allows CORS, the page token comes from the (admin-only) database
       const run = await syncPage(pageId, { source: "api", full });
       toast({ kind: "success", title: full ? "ดึงข้อมูลย้อนหลังเรียบร้อย" : "Sync เรียบร้อย",
-        detail: `อัปเดต ${run.refreshed ?? run.postCount} จาก ${run.postCount} โพสต์ · ข้อมูลรายวัน ${run.dailyDays ?? "-"} วันล่าสุด` });
+        detail: `อัปเดต ${run.refreshed ?? run.postCount} จาก ${run.postCount} โพสต์ · ข้อมูลรายวัน ${run.dailyDays ?? "-"} วันล่าสุด${run.failed ? ` · ดึงไม่ได้ ${run.failed} โพสต์ (คงค่าเดิมไว้ กด Sync อีกครั้งเพื่อลองใหม่)` : ""}` });
       router.refresh();
     } catch (e: any) {
       toast({ kind: "error", title: "Sync ไม่สำเร็จ", detail: e.message });
@@ -184,7 +206,9 @@ export function AppShell({ pages, pageId, email, syncs, children }: Props) {
           <div className="min-w-0">
             <div className="truncate text-[15px] font-semibold leading-tight">{title}</div>
             <div className="hidden truncate text-xs text-muted sm:block">{page ? maskPage(secret, page.name, idx) : ""}</div>
+            <div className="truncate text-[11px] text-muted sm:hidden"><LastUpdated at={last?.at} stale={stale} short /></div>
           </div>
+          <div className="ml-2 hidden shrink-0 sm:block"><LastUpdated at={last?.at} stale={stale} /></div>
 
           <form className="relative ml-auto hidden md:block" onSubmit={(e) => { e.preventDefault(); progress.start(); router.push(`/p/${pageId}/posts?${new URLSearchParams({ ...Object.fromEntries(sp), q }).toString()}`); }}>
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />

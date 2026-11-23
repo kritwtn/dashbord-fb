@@ -11,6 +11,7 @@ import { ThemeToggle } from "./Theme";
 import { useToast } from "./Toast";
 import { progress } from "./TopProgress";
 import { logout } from "@/lib/auth";
+import { BUILT_AT, COMMIT, VERSION } from "@/lib/version";
 import { syncPage } from "@/lib/sync";
 
 type Props = {
@@ -172,7 +173,7 @@ export function AppShell({ pages, pageId, email, syncs, children }: Props) {
         })}
       </div>
 
-      <div className={`flex items-center gap-2 border-t border-line p-3 ${mini ? "flex-col" : ""}`}>
+      <div className={`flex items-center gap-2 border-t border-line px-3 pt-3 ${mini ? "flex-col" : ""}`}>
         <div className={`flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-xs text-muted ${mini ? "justify-center" : ""}`}
           title={last ? `sync ล่าสุด ${thDate(new Date(last.at).toISOString())} (เวลาไทย)` : "ยังไม่เคย sync"}>
           <span className={`h-2 w-2 shrink-0 rounded-full ${stale ? "bg-primary" : "bg-up"}`} />
@@ -182,6 +183,10 @@ export function AppShell({ pages, pageId, email, syncs, children }: Props) {
           aria-label={mini ? "ขยายแถบด้านข้าง" : "ย่อแถบด้านข้าง"} title={mini ? "ขยายแถบด้านข้าง" : "ย่อแถบด้านข้าง"}>
           {mini ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
         </button>
+      </div>
+      <div className={`num pb-3 pt-1 text-[11px] text-muted ${mini ? "text-center" : "truncate px-5"}`}
+        title={`เวอร์ชัน ${VERSION}${COMMIT ? ` (${COMMIT})` : ""} · deploy ล่าสุด ${thDate(new Date(BUILT_AT).toISOString())} (เวลาไทย)`}>
+        {mini ? VERSION : <><span className="font-semibold text-text">{VERSION}</span> · deploy {thDate(new Date(BUILT_AT).toISOString())}</>}
       </div>
     </div>
   );

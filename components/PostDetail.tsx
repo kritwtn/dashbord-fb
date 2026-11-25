@@ -105,6 +105,7 @@ export function PostDetail(props: {
               <div key={h.k} className="card p-5">
                 <div className="flex items-center gap-2 text-[13px] font-medium text-muted"><h.icon size={15} style={{ color: h.color }} />{h.label}</div>
                 <div className="num mt-3 text-[28px] font-semibold leading-none tracking-tight">{fmt(h.k, latest[h.k]) ?? <Dash />}</div>
+                {h.k === "views" && <div className="mt-2 text-xs text-muted">นับทุกครั้งที่เริ่มเล่น ตั้งแต่โพสต์ · ดูนาน 3 วิขึ้นไป <span className="num">{fmt("videoViews", latest.videoViews) ?? "–"}</span></div>}
               </div>
             ))}
           </section>

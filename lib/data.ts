@@ -86,17 +86,17 @@ export async function loadAudience(pageId: string): Promise<Record<string, Audie
 }
 
 /**
- * Followers gained per post on a Meta day (15:00–15:00 Thai time), from sync snapshots: Meta only exposes a
+ * Followers gained per post on a Meta day (or the Meta days `day`..`toDay`) (15:00–15:00 Thai time), from sync snapshots: Meta only exposes a
  * lifetime total per post. Uses the syncs closest to the two day boundaries (at most 6h off), so the result is
  * an approximation over [fromAt, toAt]. `null` when no sync is close enough.
  */
-export async function loadFollowGains(pageId: string, day: string, created: Record<string, string>) {
+export async function loadFollowGains(pageId: string, day: string, created: Record<string, string>, toDay = day) {
   const HOUR = 3600000;
   const runs = Object.values<SyncRun>((await db().ref(`syncs/${pageId}`).get()).val() ?? {})
     .filter((r) => r.source !== "csv")
     .sort((a, b) => a.at - b.at);
   const start = metaDayStart(day);
-  const end = start + 24 * HOUR;
+  const end = metaDayStart(toDay) + 24 * HOUR;
   const nearest = (t: number) => {
     const r = runs.reduce<SyncRun | undefined>((best, x) => (!best || Math.abs(x.at - t) < Math.abs(best.at - t) ? x : best), undefined);
     return r && Math.abs(r.at - t) <= 6 * HOUR ? r : undefined;
@@ -109,21 +109,33 @@ export async function loadFollowGains(pageId: string, day: string, created: Reco
   // latest value per post inside the window (a sync may skip quiet posts)
   const inside = await Promise.all(runs.filter((r) => r.at > from.at && r.at <= to.at).map(snap));
   const last: Record<string, number> = {};
-  for (const s of inside) for (const [k, m] of Object.entries(s)) last[k] = Number(m?.followersGained) || 0;
+  const lastV: Record<string, number> = {};
+  for (const s of inside) for (const [k, m] of Object.entries(s)) {
+    last[k] = Number(m?.followersGained) || 0;
+    lastV[k] = Number(m?.views) || 0;
+  }
   // baseline per post: newest snapshot at or before `from`; posts published after `from` start at 0
   const base: Record<string, number> = {};
+  const baseV: Record<string, number> = {};
   let missing = Object.keys(last).filter((k) => {
     const t = created[k] ? new Date(created[k]).getTime() : 0;
-    if (t >= from.at) base[k] = 0;
+    if (t >= from.at) base[k] = baseV[k] = 0;
     return t < from.at;
   });
   for (const r of runs.filter((x) => x.at <= from.at).reverse().slice(0, 12)) {
     if (!missing.length) break;
     const s = await snap(r);
-    for (const k of missing) if (s[k]) base[k] = Number(s[k].followersGained) || 0;
+    for (const k of missing) if (s[k]) {
+      base[k] = Number(s[k].followersGained) || 0;
+      baseV[k] = Number(s[k].views) || 0;
+    }
     missing = missing.filter((k) => !(k in base));
   }
   const gain: Record<string, number> = {};
-  for (const k of Object.keys(last)) if (k in base) gain[k] = Math.max(0, last[k] - base[k]); // no baseline → unknown, not counted
-  return { gain, fromAt: from.at, toAt: to.at };
+  const views: Record<string, number> = {}; // total views (post_media_view) gained in the window, same method
+  for (const k of Object.keys(last)) if (k in base) { // no baseline → unknown, not counted
+    gain[k] = Math.max(0, last[k] - base[k]);
+    views[k] = Math.max(0, lastV[k] - baseV[k]);
+  }
+  return { gain, views, fromAt: from.at, toAt: to.at };
 }

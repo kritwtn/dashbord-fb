@@ -48,8 +48,42 @@ export function Overview({ b, pageIndex }: { b: PageBundle; pageIndex: number })
   }));
 
   const rows = useMemo(() => buildRows(b, win, lastDay, range.allow), [b, win, lastDay, range.allow]);
-  const [topBy, setTopBy] = useState<"views" | "revenue" | "engagement">("views");
-  const topVal = (r: (typeof rows)[number]) => (topBy === "views" ? r.views : topBy === "revenue" ? r.revenue : r.reactions + r.comments + r.shares);
+  const [topBy, setTopBy] = useState<"views" | "revenue" | "engagement" | "followers">("views");
+  // followers gained per post in the range: measured between the syncs nearest the range's edges; with a weekday
+  // filter (or no sync close enough) estimated from each allowed day's page new follows × the post's share of video views
+  const created = useMemo(() => Object.fromEntries(Object.entries(b.posts).map(([k, p]) => [k, p.createdTime])), [b.posts]);
+  const followRange = useData(
+    () => (range.allow ? Promise.resolve(null) : loadFollowGains(b.page.id, win.from, created, win.to)),
+    [b.page.id, win.from, win.to, !!range.allow, b.lastSync?.id],
+  ).data;
+  const followEst = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const day of daysBetween(win.from, win.to)) {
+      if (range.allow && !range.allow(day)) continue;
+      const nf = b.pageDaily[day]?.newFollows ?? 0;
+      const vSum = Object.keys(b.posts).reduce((a, k) => a + (b.postDaily[k]?.[day]?.v ?? 0), 0);
+      if (!nf || !vSum) continue;
+      for (const k of Object.keys(b.posts)) {
+        const v = b.postDaily[k]?.[day]?.v ?? 0;
+        if (v) out[k] = (out[k] ?? 0) + (nf * v) / vSum;
+      }
+    }
+    return out;
+  }, [b, win.from, win.to, range.allow]);
+  // total views (ยอดดู, post_media_view) in the range. Meta has no daily series for it per post, so: measured between
+  // syncs when possible, else the post's daily 3-second video views scaled by its lifetime views ÷ video views
+  const totalViews = (r: (typeof rows)[number]) => {
+    const m = followRange?.views[r.key];
+    if (m != null) return m;
+    const L = b.latest[r.key];
+    if (!L) return r.views;
+    if (L.videoViews > 0) return Math.min(L.views, Math.round((r.views * L.views) / L.videoViews));
+    const t = metaDay(r.p.createdTime);
+    return t >= win.from && t <= win.to ? L.views : r.views;
+  };
+  const fol = (key: string) => Math.round(followRange ? followRange.gain[key] ?? 0 : followEst[key] ?? 0);
+  const topVal = (r: (typeof rows)[number]) =>
+    topBy === "views" ? totalViews(r) : topBy === "revenue" ? r.revenue : topBy === "followers" ? fol(r.key) : r.reactions + r.comments + r.shares;
   const topRange = [...rows].filter((r) => topVal(r) > 0).sort((a, c) => topVal(c) - topVal(a)).slice(0, 8);
   const topMax = Math.max(1, ...topRange.map(topVal));
   const [showLabels, setShowLabels] = useState(() => {
@@ -140,12 +174,18 @@ export function Overview({ b, pageIndex }: { b: PageBundle; pageIndex: number })
           <div>
             <div className="card-title flex items-center gap-2">โพสต์ที่ทำผลงานดีที่สุด <MetaDay /></div>
             <div className="mt-0.5 text-xs text-muted">ในช่วง {thDay(win.from)}{win.from !== win.to ? ` – ${thDay(win.to)}` : ""}{topBy === "engagement" ? " · การมีส่วนร่วมเป็นยอดสะสม" : ""}</div>
+            <div className="mt-0.5 text-xs text-muted">
+              ยอดดูและผู้ติดตาม ≈ {followRange
+                ? <>นับระหว่าง sync {thDate(new Date(followRange.fromAt).toISOString())} ถึง {thDate(new Date(followRange.toAt).toISOString())} (เวลาไทย)</>
+                : "ประมาณจากข้อมูลรายวัน (Meta ไม่มียอดดูและผู้ติดตามรายวันแยกต่อโพสต์)"}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <div className="seg" role="tablist" aria-label="เรียงตาม">
-              <button data-active={topBy === "views"} onClick={() => setTopBy("views")}>วิว</button>
+              <button data-active={topBy === "views"} onClick={() => setTopBy("views")}>ยอดดู</button>
               <button data-active={topBy === "revenue"} onClick={() => setTopBy("revenue")}>รายได้</button>
               <button data-active={topBy === "engagement"} onClick={() => setTopBy("engagement")}>Engagement</button>
+              <button data-active={topBy === "followers"} onClick={() => setTopBy("followers")}>ผู้ติดตาม</button>
             </div>
             <Link href={`/p/${b.page.id}/posts${range.query ? `?${range.query}` : ""}`} className="btn btn-ghost hidden h-8 text-[13px] sm:inline-flex">
               ดูทั้งหมด <ChevronRight size={15} />
@@ -171,15 +211,18 @@ export function Overview({ b, pageIndex }: { b: PageBundle; pageIndex: number })
                         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-subtle">
                           <div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${(v / topMax) * 100}%` }} />
                         </div>
+                        <span className="num inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-muted" title="ผู้ติดตามที่ได้จากโพสต์นี้ในช่วงที่เลือก (≈)">
+                          <UserPlus size={12} style={{ color: "var(--color-c4)" }} />≈ +{num(fol(r.key))}
+                        </span>
                         <span className="hidden sm:inline"><TypeBadge type={r.p.type} /></span>
                       </div>
                     </div>
                     <div className="w-24 shrink-0 text-right">
                       <div className={`num text-sm font-semibold ${topBy === "revenue" ? "text-up" : "text-text"}`}>
-                        {topBy === "views" ? num(r.views) : topBy === "revenue" ? usd(r.revenue) : num(v)}
+                        {topBy === "views" ? num(v) : topBy === "revenue" ? usd(r.revenue) : topBy === "followers" ? `+${num(v)}` : num(v)}
                       </div>
                       <div className="num mt-0.5 text-xs text-muted">
-                        {topBy === "views" ? (r.revenue ? usd(r.revenue) : "—") : `${compact(r.views)} วิว`}
+                        {topBy === "views" ? (r.revenue ? usd(r.revenue) : "—") : `${compact(totalViews(r))} ยอดดู`}
                       </div>
                     </div>
                     <ChevronRight size={16} className="hidden shrink-0 text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-text sm:block" />
@@ -188,7 +231,7 @@ export function Overview({ b, pageIndex }: { b: PageBundle; pageIndex: number })
               );
             })}
           </ol>
-        ) : <EmptyState title={topBy === "revenue" ? "ยังไม่มีรายได้ในช่วงนี้" : "ยังไม่มีข้อมูลในช่วงนี้"} hint="ลองเลือกช่วงเวลาอื่น หรือกด Sync เพื่อดึงข้อมูลล่าสุด" />}
+        ) : <EmptyState title={topBy === "revenue" ? "ยังไม่มีรายได้ในช่วงนี้" : topBy === "followers" ? "ยังไม่มีผู้ติดตามจากโพสต์ในช่วงนี้" : "ยังไม่มีข้อมูลในช่วงนี้"} hint="ลองเลือกช่วงเวลาอื่น หรือกด Sync เพื่อดึงข้อมูลล่าสุด" />}
       </section>
 
       <p className="text-xs leading-relaxed text-muted">
@@ -347,7 +390,7 @@ function DailySummary({ b, firstDay, lastDay, title }: { b: PageBundle; firstDay
 type Stat = { kind: "views" | "video" | "reach" | "follows" | "revenue" | "engage"; label: string; cur?: number; prev?: number;
   money?: boolean; plus?: boolean; color: string; icon: typeof Eye };
 
-type FollowGains = { gain: Record<string, number>; fromAt: number; toAt: number };
+type FollowGains = { gain: Record<string, number>; views?: Record<string, number>; fromAt: number; toAt: number };
 const followWindowNote = (f: FollowGains, pageTotal?: number) => (
   <>
     <b>≈ นับระหว่าง sync</b> {thDate(new Date(f.fromAt).toISOString())} ถึง {thDate(new Date(f.toAt).toISOString())} (เวลาไทย)
